@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
 import { usePlayer } from '../context/PlayerContext';
 import { careers } from '../data/mockData';
+import TulipIcon from '../components/ui/TulipIcon';
 
 const avatarOptions = [
   'avatar-1', 'avatar-2', 'avatar-3', 'avatar-4',
@@ -24,7 +25,10 @@ function CharacterCreationPage() {
   if (player) {
     return (
       <main className="mx-auto max-w-3xl p-8">
-        <h1 className="font-display text-5xl font-bold text-forest">Guildhaven</h1>
+        <h1 className="flex items-center gap-3 font-display text-5xl font-bold text-forest">
+          Guildhaven
+          <TulipIcon className="h-12 w-9" />
+        </h1>
         <p className="mt-2 mb-6">Build your skills. Find your people. Shape your future.</p>
 
         <Panel title={`Welcome back, ${player.username}`}>
@@ -57,7 +61,10 @@ function CharacterCreationPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-8">
-      <h1 className="font-display text-5xl font-bold text-forest">Guildhaven</h1>
+      <h1 className="flex items-center gap-3 font-display text-5xl font-bold text-forest">
+        Guildhaven
+      <TulipIcon className="h-12 w-9" />
+      </h1>
       <p className="mt-2 mb-6">Build your skills. Find your people. Shape your future.</p>
 
       <Panel title="Create your character">
