@@ -17,12 +17,19 @@
   /* Accents */
   --color-dusk: #46657f;
   --color-gold: #e0a93b; 
+  --color-rose: #d4789a;
+  --color-plum: #8a63b0;
+  --color-teal: #4f9a94;
+  --color-coral: #e0805a;
 
   --font-display: "Pixelify Sans", ui-monospace, monospace;
   --font-body: "Nunito", system-ui, sans-serif;
 }
 
 @layer base {
+  html {
+    font-size: 90%;
+  }
   body {
     font-family: var(--font-body);
     font-size: 1.125rem; /* 18px, readable by default */
