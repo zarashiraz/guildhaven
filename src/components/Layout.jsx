@@ -1,4 +1,5 @@
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, Navigate } from 'react-router-dom';
+import { usePlayer } from '../context/PlayerContext';
 
 const navItems = [
   { to: '/village', label: 'Village' },
@@ -11,6 +12,9 @@ const navItems = [
 const focusRing = 'focus-visible:outline-cream';
 
 function Layout() {
+  const { player, logout } = usePlayer();
+  if (!player) return <Navigate to="/" replace />;
+
   return (
     <>
       <a
@@ -43,15 +47,13 @@ function Layout() {
             </NavLink>
           ))}
 
-          <Link
-            to="/"
-            aria-label="Home: back to character creation"
-            className={`ml-auto rounded-sm border-2 border-cream p-2 text-cream hover:bg-cream hover:text-bark ${focusRing}`}
+          <button
+            type="button"
+            onClick={logout}
+            className={`ml-auto rounded-sm border-2 border-cream px-4 py-2 font-display text-lg text-cream shadow-[3px_3px_0_0_var(--color-wood)] transition hover:bg-cream hover:text-bark active:translate-x-0.5 active:translate-y-0.5 active:shadow-none ${focusRing}`}
           >
-            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden="true">
-              <path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3L12 3z" />
-            </svg>
-          </Link>
+            Log out
+          </button>
         </nav>
       </header>
 

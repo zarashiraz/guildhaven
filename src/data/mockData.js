@@ -17,9 +17,9 @@ export const mockPlayer = {
 
 // Frontend-only config. Not in the database.
 export const careers = [
-  { id: 'swe', name: 'Software Engineering', building: 'Code Workshop', blurb: 'Program a robot.' },
-  { id: 'uxui', name: 'UI/UX Design', building: 'Design Studio', blurb: 'Fix a confusing interface.' },
-  { id: 'business', name: 'Business', building: 'Market Hall', blurb: 'Run a virtual shop.' },
+  { id: 'swe', name: 'Software Engineering', building: 'Code Workshop', blurb: 'Build software and automation skills.' },
+  { id: 'uxui', name: 'UI/UX Design', building: 'Design Studio', blurb: 'Learn to design interfaces people love.' },
+  { id: 'business', name: 'Business', building: 'Market Hall', blurb: 'Practice running and growing a business.' },
 ];
 
 // Table: skills
@@ -44,6 +44,4 @@ export const mockQuests = [
 ];
 
 // Table: user_quests (which quests THIS player has finished)
-export const mockCompletedQuests = [
-  { quest_id: 'q1', completed_at: '2026-11-07T14:00:00Z' },
-];
+export const mockCompletedQuests = [];
