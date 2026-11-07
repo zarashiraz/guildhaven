@@ -1,24 +1,25 @@
-import Panel from './components/ui/Panel';
-import Button from './components/ui/Button';
-import XPBar from './components/ui/XPBar';
+import { Routes, Route } from 'react-router-dom';
+import Layout from './components/Layout';
+import CharacterCreationPage from './pages/CharacterCreationPage';
+import VillagePage from './pages/VillagePage';
+import QuestBoardPage from './pages/QuestBoardPage';
+import QuestPage from './pages/QuestPage';
+import GuildHallPage from './pages/GuildHallPage';
+import PortfolioPage from './pages/PortfolioPage';
 
 function App() {
   return (
-    <main className="min-h-screen p-8">
-      <h1 className="font-display text-5xl font-bold text-forest">Welcome to Guildhaven </h1>
-      <p className="mt-2">Build your skills. Find your people. Shape your future.</p>
+    <Routes>
+      <Route path="/" element={<CharacterCreationPage />} />
 
-      <div className="mt-6 grid gap-6 sm:grid-cols-2">
-        <Panel title="Your Guild">
-        <XPBar current={240} max={400} level={3} />
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Button>Start quest</Button>
-          <Button variant="secondary">Secondary</Button>
-          <Button disabled>Locked</Button>
-        </div>
-      </Panel>
-      </div>
-    </main>
+      <Route element={<Layout />}>
+        <Route path="/village" element={<VillagePage />} />
+        <Route path="/quests" element={<QuestBoardPage />} />
+        <Route path="/quests/:questId" element={<QuestPage />} />
+        <Route path="/guild" element={<GuildHallPage />} />
+        <Route path="/portfolio" element={<PortfolioPage />} />
+      </Route>
+    </Routes>
   );
 }
 
