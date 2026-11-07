@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+@theme {
+  /* Backgrounds */
+  --color-cream: #fff8e7;
+  --color-parchment: #f6ecd2;
+
+  /* Greens */
+  --color-forest: #2f5d3a;
+  --color-sage: #8fa98a;
+
+  /* Browns */
+  --color-wood: #a0724a;
+  --color-bark: #6b4a2f;
+  --color-ink: #3a2a1c; 
+
+  /* Accents */
+  --color-dusk: #46657f;
+  --color-gold: #e0a93b; 
+
+  --font-display: "Pixelify Sans", ui-monospace, monospace;
+  --font-body: "Nunito", system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+    font-size: 1.125rem; /* 18px, readable by default */
+    background-color: var(--color-parchment);
+    color: var(--color-ink);
+  }
+
+  /* Visible keyboard focus everywhere */
+  :focus-visible {
+    outline: 3px solid var(--color-dusk);
+    outline-offset: 3px; 
+  }
+
+  /* Respect users who turn animations off */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
