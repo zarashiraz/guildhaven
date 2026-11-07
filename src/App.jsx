@@ -1,4 +1,6 @@
 import Panel from './components/ui/Panel';
+import Button from './components/ui/Button';
+import XPBar from './components/ui/XPBar';
 
 function App() {
   return (
@@ -7,15 +9,14 @@ function App() {
       <p className="mt-2">Build your skills. Find your people. Shape your future.</p>
 
       <div className="mt-6 grid gap-6 sm:grid-cols-2">
-        <Panel title="Quest Board">
-          <p>3 quests available</p>
-        </Panel>
         <Panel title="Your Guild">
-          <p>No guild yet. Finish a quest to get matched.</p>
-        </Panel>
-        <Panel className="sm:col-span-2">
-          <p>This panel has no title and spans both columns.</p>
-        </Panel>
+        <XPBar current={240} max={400} level={3} />
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button>Start quest</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button disabled>Locked</Button>
+        </div>
+      </Panel>
       </div>
     </main>
   );
