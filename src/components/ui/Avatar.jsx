@@ -9,11 +9,11 @@ const avatars = {
   'avatar-8': { skin: 'fill-[#e8b48a]', hair: 'fill-wood', shirt: 'fill-rose', long: true },
 };
 
-function Avatar({ id, className = '' }) {
+function Avatar({ id, className = '', ...props }) {
   const look = avatars[id] ?? avatars['avatar-1'];
 
   return (
-    <svg viewBox="0 0 9 9" className={className} shapeRendering="crispEdges" aria-hidden="true">
+    <svg viewBox="0 0 9 9" className={className} shapeRendering="crispEdges" aria-hidden="true" {...props}>
       {/* head and eyes */}
       <rect x="2" y="0" width="5" height="3" className={look.skin} />
       <rect x="3" y="2" width="1" height="1" className="fill-ink" />
