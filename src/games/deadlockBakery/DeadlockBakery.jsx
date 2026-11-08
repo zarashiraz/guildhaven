@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Button from '../../components/ui/Button';
-import GameFrame from '../GameFrame';
+import GameFrame from '../../components/games/GameFrame';
 
 // The bakers share tools. Each baker needs TWO tools to bake one cake.
 const BAKERS = [

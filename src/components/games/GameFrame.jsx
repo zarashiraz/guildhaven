@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import Button from '../components/ui/Button';
+import Button from '../ui/Button';
 
 // Shared wrapper for every Guildhaven mini-game.
 // Gives each game the same: How to play, Hint, and a win panel that saves the quest.

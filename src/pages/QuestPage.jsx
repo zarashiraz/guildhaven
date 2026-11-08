@@ -7,6 +7,8 @@ import PostOfficeRush from '../games/postOfficeRush/PostOfficeRush';
 import DeadlockBakery from '../games/deadlockBakery/DeadlockBakery';
 import StakeholderSummit from '../games/stakeholderSummit/StakeholderSummit';
 import LedgerDetective from '../games/ledgerDetective/LedgerDetective';
+import GradientGarden from '../games/gradientGarden/GradientGarden';
+import QueryLibrary from '../games/queryLibrary/QueryLibrary';
 
 const normalizeCareer = (id) =>
   String(id ?? '').toLowerCase().replace(/[ -]/g, '_');
@@ -150,6 +152,10 @@ function QuestPage() {
         return <StakeholderSummit onComplete={handleQuestComplete} />;
       case 5:
         return <LedgerDetective onComplete={handleQuestComplete} />;
+      case 7:
+        return <GradientGarden onComplete={handleQuestComplete} />;
+      case 8:
+        return <QueryLibrary onComplete={handleQuestComplete} />;
       default:
         return (
           <div className="my-6 rounded-sm border-4 border-dashed border-wood p-8 text-center">

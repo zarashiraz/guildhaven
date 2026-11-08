@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import Button from '../../components/ui/Button';
-import GameFrame from '../GameFrame';
+import GameFrame from '../../components/games/GameFrame';
 import { RUNNER_SOURCE } from './runner';
 import { rounds, scenarios, starterCode, solutions } from './scenarios';
 
