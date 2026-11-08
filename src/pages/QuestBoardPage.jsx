@@ -11,6 +11,8 @@ const CAREERS = [
     bg: '#FCE0E9',
     active: '#F4AFC4',
     text: '#69384C',
+    bar: '#E89BB5',
+    view: 'swe_skill_trends',
   },
   {
     id: 'business',
@@ -18,28 +20,36 @@ const CAREERS = [
     bg: '#DDF1E2',
     active: '#A9D8B8',
     text: '#315D42',
+    bar: '#94BDA0',
+    view: 'business_skill_trends',
   },
   {
-    id: 'uiux',
-    label: 'UI/UX Design',
+    id: 'data-science',
+    label: 'Data Science',
     bg: '#DFEFFA',
     active: '#A9D7F2',
     text: '#315B78',
+    bar: '#8ABEDC',
+    view: 'data_science_skill_trends',
   },
 ];
 
 function QuestBoardPage() {
   const [selectedCareer, setSelectedCareer] = useState(null);
 
-  const [skills, setSkills] = useState([]);
-  const [quests, setQuests] = useState([]);
-  const [doneIds, setDoneIds] = useState([]);
+  const [skillsByCareer, setSkillsByCareer] = useState({
+    swe: [],
+    business: [],
+    'data-science': [],
+  });
 
-  const [loading, setLoading] = useState(true);
+  const [skillErrors, setSkillErrors] = useState({});
   const [skillsLoading, setSkillsLoading] = useState(true);
 
+  const [quests, setQuests] = useState([]);
+  const [doneIds, setDoneIds] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [skillsError, setSkillsError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -48,23 +58,40 @@ function QuestBoardPage() {
       setLoading(true);
       setSkillsLoading(true);
       setError('');
-      setSkillsError('');
+      setSkillErrors({});
 
-      const [questResult, skillResult, authResult] =
-        await Promise.all([
-          supabase
-            .from('quests')
-            .select('*')
-            .order('id'),
+      const [
+        questResult,
+        sweResult,
+        businessResult,
+        dataScienceResult,
+        authResult,
+      ] = await Promise.all([
+        supabase
+          .from('quests')
+          .select('*')
+          .order('id'),
 
-          supabase
-            .from('swe_skill_trends')
-            .select('skill, job_count, percentage')
-            .gt('percentage', 0)
-            .order('job_count', { ascending: false }),
+        supabase
+          .from('swe_skill_trends')
+          .select('skill, job_count, percentage')
+          .gt('percentage', 0)
+          .order('job_count', { ascending: false }),
 
-          supabase.auth.getUser(),
-        ]);
+        supabase
+          .from('business_skill_trends')
+          .select('skill, job_count, percentage, total_jobs')
+          .gt('percentage', 0)
+          .order('job_count', { ascending: false }),
+
+        supabase
+          .from('data_science_skill_trends')
+          .select('skill, job_count, percentage, total_jobs')
+          .gt('percentage', 0)
+          .order('job_count', { ascending: false }),
+
+        supabase.auth.getUser(),
+      ]);
 
       if (!active) return;
 
@@ -74,22 +101,30 @@ function QuestBoardPage() {
         setQuests(questResult.data || []);
       }
 
-      if (skillResult.error) {
-        setSkillsError(skillResult.error.message);
-      } else {
-        setSkills(skillResult.data || []);
-      }
+      setSkillsByCareer({
+        swe: sweResult.data || [],
+        business: businessResult.data || [],
+        'data-science': dataScienceResult.data || [],
+      });
+
+      setSkillErrors({
+        swe: sweResult.error?.message || '',
+        business: businessResult.error?.message || '',
+        'data-science': dataScienceResult.error?.message || '',
+      });
 
       setSkillsLoading(false);
 
       const user = authResult.data?.user;
 
       if (user) {
-        const { data: completions, error: completionError } =
-          await supabase
-            .from('quest_completions')
-            .select('quest_id')
-            .eq('player_id', user.id);
+        const {
+          data: completions,
+          error: completionError,
+        } = await supabase
+          .from('quest_completions')
+          .select('quest_id')
+          .eq('player_id', user.id);
 
         if (completionError) {
           console.error(
@@ -105,9 +140,7 @@ function QuestBoardPage() {
         }
       }
 
-      if (active) {
-        setLoading(false);
-      }
+      if (active) setLoading(false);
     }
 
     loadData();
@@ -127,16 +160,20 @@ function QuestBoardPage() {
     (career) => career.id === selectedCareer
   );
 
-  const visibleSkills = skills.filter(
-    (skill) => Number(skill.percentage) > 0
-  );
+  const visibleSkills = (
+    skillsByCareer[selectedCareer] || []
+  ).filter((skill) => Number(skill.percentage) > 0);
+
+  const careerDescription =
+    selectedCareer === 'swe'
+      ? 'software development'
+      : selectedCareer === 'business'
+        ? 'business'
+        : 'data science';
 
   return (
     <div className="space-y-6">
-
-      {/* SKILL DEMAND TRACKER */}
       <Panel title="Skill Demand Tracker">
-
         <p className="mb-5 text-bark">
           Discover what employers are looking for,
           then build those skills through Guildhaven quests.
@@ -144,7 +181,6 @@ function QuestBoardPage() {
 
         {/* Career buttons */}
         <div className="flex flex-wrap gap-4 pb-4 pt-2">
-
           {CAREERS.map((career) => {
             const selected =
               selectedCareer === career.id;
@@ -160,13 +196,10 @@ function QuestBoardPage() {
                   backgroundColor: selected
                     ? career.active
                     : career.bg,
-
                   color: career.text,
-
                   borderColor: selected
                     ? career.text
                     : '#725238',
-
                   boxShadow: selected
                     ? '3px 4px 0px #725238'
                     : '2px 3px 0px #a98963',
@@ -201,10 +234,9 @@ function QuestBoardPage() {
               </button>
             );
           })}
-
         </div>
 
-        {/* Hidden until a career is selected */}
+        {/* Skill stats stay hidden until a career is selected */}
         {selectedCareer && (
           <div
             id="career-skill-details"
@@ -216,134 +248,103 @@ function QuestBoardPage() {
               animate-[fadeIn_0.3s_ease-out]
             "
           >
+            <h3 className="mb-2 font-display text-xl text-bark">
+              {selectedCareerInfo?.label}
+            </h3>
 
-            {selectedCareer === 'swe' ? (
-              <div>
+            <p className="mb-6 text-sm text-bark opacity-75">
+              Based on sampled Canadian{' '}
+              {careerDescription} job postings.
+              Percentages represent detected skill
+              mentions in this sample, not the entire
+              job market.
+            </p>
 
-                <h3 className="mb-2 font-display text-xl text-bark">
-                  Software Engineering
-                </h3>
-
-                <p className="mb-6 text-sm text-bark opacity-75">
-                  Based on 50 sampled Canadian software
-                  development job postings. Percentages
-                  represent detected skill mentions in
-                  this sample, not the entire job market.
-                </p>
-
-                {skillsLoading && (
-                  <p>Loading skill trends...</p>
-                )}
-
-                {skillsError && (
-                  <p className="text-red-700">
-                    Could not load trends: {skillsError}
-                  </p>
-                )}
-
-                {!skillsLoading &&
-                  !skillsError &&
-                  visibleSkills.length === 0 && (
-                    <p>
-                      No skill demand data available yet.
-                    </p>
-                  )}
-
-                {!skillsLoading &&
-                  !skillsError &&
-                  visibleSkills.length > 0 && (
-
-                    <div className="space-y-5">
-
-                      {visibleSkills.map((skill) => {
-                        const percentage = Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            Number(skill.percentage) || 0
-                          )
-                        );
-
-                        return (
-                          <div key={skill.skill}>
-
-                            <div className="mb-2 flex items-center justify-between gap-4">
-
-                              <span className="font-display text-bark">
-                                {skill.skill}
-                              </span>
-
-                              <span className="font-display text-forest">
-                                {percentage.toFixed(1)}%
-                              </span>
-
-                            </div>
-
-                            <div className="h-4 overflow-hidden rounded-sm border-2 border-bark bg-[#f0e2c4]">
-
-                              <div
-                                className="
-                                  h-full
-                                  bg-[#356d43]
-                                  transition-all
-                                  duration-700
-                                  ease-out
-                                "
-                                style={{
-                                  width: `${percentage}%`,
-                                }}
-                              />
-
-                            </div>
-
-                            <p className="mt-1 text-xs opacity-70">
-                              Found in {skill.job_count} of
-                              50 postings
-                            </p>
-
-                          </div>
-                        );
-                      })}
-
-                    </div>
-                  )}
-
-              </div>
-            ) : (
-
-              <div className="
-                rounded-sm
-                border-2
-                border-dashed
-                border-[#a98963]
-                bg-[#fff8e9]
-                p-8
-                text-center
-              ">
-
-                <h3 className="mb-3 font-display text-xl text-bark">
-                  {selectedCareerInfo?.label}
-                </h3>
-
-                <p className="text-bark">
-                  Job market insights for this career
-                  are coming soon.
-                </p>
-
-              </div>
+            {skillsLoading && (
+              <p>Loading skill trends...</p>
             )}
 
+            {skillErrors[selectedCareer] && (
+              <p className="text-red-700">
+                Could not load trends:{' '}
+                {skillErrors[selectedCareer]}
+              </p>
+            )}
+
+            {!skillsLoading &&
+              !skillErrors[selectedCareer] &&
+              visibleSkills.length === 0 && (
+                <p>
+                  No skill demand data available yet.
+                </p>
+              )}
+
+            {!skillsLoading &&
+              !skillErrors[selectedCareer] &&
+              visibleSkills.length > 0 && (
+                <div className="space-y-5">
+                  {visibleSkills.map((skill) => {
+                    const percentage = Math.min(
+                      100,
+                      Math.max(
+                        0,
+                        Number(skill.percentage) || 0
+                      )
+                    );
+
+                    const totalJobs =
+                      Number(skill.total_jobs) || 50;
+
+                    return (
+                      <div key={skill.skill}>
+                        <div className="mb-2 flex items-center justify-between gap-4">
+                          <span className="font-display text-bark">
+                            {skill.skill}
+                          </span>
+
+                          <span
+                            className="font-display"
+                            style={{
+                              color:
+                                selectedCareerInfo.text,
+                            }}
+                          >
+                            {percentage.toFixed(1)}%
+                          </span>
+                        </div>
+
+                        <div className="h-4 overflow-hidden rounded-sm border-2 border-bark bg-[#f0e2c4]">
+                          <div
+                            className="
+                              h-full
+                              transition-all
+                              duration-700
+                              ease-out
+                            "
+                            style={{
+                              width: `${percentage}%`,
+                              backgroundColor:
+                                selectedCareerInfo.bar,
+                            }}
+                          />
+                        </div>
+
+                        <p className="mt-1 text-xs opacity-70">
+                          Found in {skill.job_count} of{' '}
+                          {totalJobs} postings
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
           </div>
         )}
-
       </Panel>
 
-      {/* QUEST BOARD */}
+      {/* Existing Quest Board */}
       <Panel title="Quest Board">
-
-        {loading && (
-          <p>Loading quests...</p>
-        )}
+        {loading && <p>Loading quests...</p>}
 
         {error && (
           <p className="text-red-700">
@@ -351,80 +352,65 @@ function QuestBoardPage() {
           </p>
         )}
 
-        {!loading &&
-          !error &&
-          quests.length === 0 && (
-            <p>No quests available yet.</p>
-          )}
+        {!loading && !error && quests.length === 0 && (
+          <p>No quests available yet.</p>
+        )}
 
-        {!loading &&
-          !error &&
-          quests.length > 0 && (
+        {!loading && !error && quests.length > 0 && (
+          <ul className="space-y-3">
+            {quests.map((quest) => {
+              const done = doneIds.includes(quest.id);
 
-            <ul className="space-y-3">
+              return (
+                <li
+                  key={quest.id}
+                  className="
+                    flex
+                    items-center
+                    justify-between
+                    gap-4
+                    border-b-2
+                    border-parchment
+                    pb-3
+                  "
+                >
+                  <div>
+                    <p className="font-display text-xl text-bark">
+                      {quest.title}
+                    </p>
 
-              {quests.map((quest) => {
-                const done = doneIds.includes(quest.id);
+                    <p>{quest.description}</p>
+                  </div>
 
-                return (
-                  <li
-                    key={quest.id}
-                    className="
-                      flex
-                      items-center
-                      justify-between
-                      gap-4
-                      border-b-2
-                      border-parchment
-                      pb-3
-                    "
-                  >
-
-                    <div>
-                      <p className="font-display text-xl text-bark">
-                        {quest.title}
-                      </p>
-
-                      <p>{quest.description}</p>
-                    </div>
-
-                    {done ? (
-
-                      <span className="shrink-0 font-display text-forest">
-                        ✓ Done
-                      </span>
-
-                    ) : (
-
-                      <Link
-                        to={`/quests/${quest.id}`}
-                        className="
-                          shrink-0
-                          rounded-sm
-                          border-4
-                          border-bark
-                          bg-forest
-                          px-4 py-2
-                          font-display
-                          text-cream
-                          transition-transform
-                          hover:-translate-y-1
-                        "
-                      >
-                        Start (+{quest.xp_reward} XP)
-                      </Link>
-
-                    )}
-
-                  </li>
-                );
-              })}
-
-            </ul>
-          )}
-
+                  {done ? (
+                    <span className="shrink-0 font-display text-forest">
+                      ✓ Done
+                    </span>
+                  ) : (
+                    <Link
+                      to={`/quests/${quest.id}`}
+                      className="
+                        shrink-0
+                        rounded-sm
+                        border-4
+                        border-bark
+                        bg-forest
+                        px-4 py-2
+                        font-display
+                        text-cream
+                        transition-transform
+                        hover:-translate-y-1
+                      "
+                    >
+                      Start (+{quest.xp_reward} XP)
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Panel>
-
     </div>
   );
 }

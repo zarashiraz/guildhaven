@@ -55,9 +55,7 @@ function AuthPage() {
       setPasswordError('Please enter your password.');
       valid = false;
     } else if (password.length < 6) {
-      setPasswordError(
-        'Password must be at least 6 characters.'
-      );
+      setPasswordError('Password must be at least 6 characters.');
       valid = false;
     }
 
@@ -87,11 +85,10 @@ function AuthPage() {
           );
         }
       } else {
-        const { error } =
-          await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-          });
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
         if (error) throw error;
 
@@ -102,23 +99,19 @@ function AuthPage() {
       const lowerMessage = errorMessage.toLowerCase();
 
       if (lowerMessage.includes('email not confirmed')) {
-        setEmailError(
-          'Please confirm your email before signing in.'
-        );
-      } else if (
-        lowerMessage.includes('invalid login credentials')
-      ) {
+        setEmailError('Please confirm your email before signing in.');
+      } else if (lowerMessage.includes('invalid login credentials')) {
+        setGeneralError('Incorrect email or password. Please try again.');
+      } else if (lowerMessage.includes('rate limit')) {
         setGeneralError(
-          'Incorrect email or password. Please try again.'
+          'Too many attempts. Please wait a little while before trying again.'
         );
       } else if (
         lowerMessage.includes('email') ||
         lowerMessage.includes('already registered')
       ) {
         setEmailError(errorMessage);
-      } else if (
-        lowerMessage.includes('password')
-      ) {
+      } else if (lowerMessage.includes('password')) {
         setPasswordError(errorMessage);
       } else {
         setGeneralError(
@@ -131,29 +124,29 @@ function AuthPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-12">
-      <div className="mb-8 text-center">
-        <h1 className="font-display text-4xl text-forest">
+    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
+
+      {/* Guildhaven Title */}
+      <div className="mb-10 text-center">
+        <h1 className="font-display text-6xl font-bold text-forest sm:text-7xl">
           Guildhaven
         </h1>
-
-        <p className="mt-3 text-bark">
-          Your adventure starts here.
-        </p>
       </div>
 
-      <div className="rounded-md border-4 border-bark bg-[#fff8e9] p-7 shadow-[6px_6px_0px_#725238]">
+      {/* Authentication Card */}
+      <div className="w-full max-w-lg rounded-md border-4 border-bark bg-[#fff8e9] p-7 shadow-[6px_6px_0px_#725238]">
+
         <h2 className="mb-2 text-center font-display text-2xl text-bark">
           {isSignup ? 'Join the Guild' : 'Welcome Back'}
         </h2>
 
-        <p className="mb-6 text-center text-sm text-bark">
+        <p className="mb-6 text-center text-xl text-bark">
           {isSignup
             ? 'Create your account and begin your journey.'
             : 'Sign in to continue your adventure.'}
         </p>
 
-        {/* Sign In / Sign Up tabs */}
+        {/* Sign In / Sign Up Tabs */}
         <div className="mb-7 flex gap-3">
           {[
             {
@@ -187,11 +180,13 @@ function AuthPage() {
           ))}
         </div>
 
+        {/* Authentication Form */}
         <form
           onSubmit={handleSubmit}
           noValidate
           className="space-y-5"
         >
+
           {/* Email */}
           <div>
             <label
@@ -328,7 +323,7 @@ function AuthPage() {
             </div>
           )}
 
-          {/* Authentication error */}
+          {/* Authentication Error */}
           {generalError && (
             <p
               role="alert"
@@ -338,7 +333,7 @@ function AuthPage() {
             </p>
           )}
 
-          {/* Success message */}
+          {/* Success Message */}
           {message && (
             <p
               role="status"
@@ -348,7 +343,7 @@ function AuthPage() {
             </p>
           )}
 
-          {/* Submit */}
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
@@ -360,23 +355,8 @@ function AuthPage() {
                 ? 'Create Account'
                 : 'Enter Guildhaven'}
           </button>
+
         </form>
-
-        <p className="mt-6 text-center text-sm text-bark">
-          {isSignup
-            ? 'Already part of the guild?'
-            : 'New to Guildhaven?'}{' '}
-
-          <button
-            type="button"
-            onClick={() =>
-              switchMode(isSignup ? 'signin' : 'signup')
-            }
-            className="font-semibold text-forest underline hover:opacity-70"
-          >
-            {isSignup ? 'Sign In' : 'Sign Up'}
-          </button>
-        </p>
       </div>
     </div>
   );
