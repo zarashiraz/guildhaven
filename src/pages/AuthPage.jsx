@@ -34,7 +34,9 @@ function AuthPage() {
   }
 
   function validateEmail(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      value.trim()
+    );
   }
 
   async function handleSubmit(e) {
@@ -55,7 +57,9 @@ function AuthPage() {
       setPasswordError('Please enter your password.');
       valid = false;
     } else if (password.length < 6) {
-      setPasswordError('Password must be at least 6 characters.');
+      setPasswordError(
+        'Password must be at least 6 characters.'
+      );
       valid = false;
     }
 
@@ -78,17 +82,20 @@ function AuthPage() {
         if (error) throw error;
 
         if (data.session) {
-          navigate('/create-character', { replace: true });
+          navigate('/create-character', {
+            replace: true,
+          });
         } else {
           setMessage(
             'Account created! Check your email to confirm your account, then sign in.'
           );
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+        const { error } =
+          await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
 
         if (error) throw error;
 
@@ -99,9 +106,15 @@ function AuthPage() {
       const lowerMessage = errorMessage.toLowerCase();
 
       if (lowerMessage.includes('email not confirmed')) {
-        setEmailError('Please confirm your email before signing in.');
-      } else if (lowerMessage.includes('invalid login credentials')) {
-        setGeneralError('Incorrect email or password. Please try again.');
+        setEmailError(
+          'Please confirm your email before signing in.'
+        );
+      } else if (
+        lowerMessage.includes('invalid login credentials')
+      ) {
+        setGeneralError(
+          'Incorrect email or password. Please try again.'
+        );
       } else if (lowerMessage.includes('rate limit')) {
         setGeneralError(
           'Too many attempts. Please wait a little while before trying again.'
@@ -115,7 +128,8 @@ function AuthPage() {
         setPasswordError(errorMessage);
       } else {
         setGeneralError(
-          errorMessage || 'Something went wrong. Try again.'
+          errorMessage ||
+            'Something went wrong. Try again.'
         );
       }
     } finally {
@@ -126,9 +140,16 @@ function AuthPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
 
-      {/* Guildhaven Title */}
-      <div className="mb-10 text-center">
-        <h1 className="font-display text-6xl font-bold text-forest sm:text-7xl">
+      {/* Guildhaven Title with Pixel Tulip */}
+      <div className="mb-10 flex items-center justify-center gap-3 sm:gap-4">
+        <img
+          src="/favicon.svg"
+          alt="Pink pixel tulip"
+          className="h-12 w-12 shrink-0 object-contain sm:h-16 sm:w-16"
+          style={{ imageRendering: 'pixelated' }}
+        />
+
+        <h1 className="font-display text-5xl font-bold text-forest sm:text-7xl">
           Guildhaven
         </h1>
       </div>
@@ -168,7 +189,9 @@ function AuthPage() {
               className="flex-1 rounded-sm border-[3px] border-bark px-4 py-3 font-display text-sm transition-all duration-200 hover:-translate-y-1 hover:scale-[1.03] motion-reduce:transform-none"
               style={{
                 backgroundColor:
-                  mode === tab.id ? tab.bg : '#F3E6CD',
+                  mode === tab.id
+                    ? tab.bg
+                    : '#F3E6CD',
                 boxShadow:
                   mode === tab.id
                     ? '3px 3px 0px #725238'
@@ -209,7 +232,9 @@ function AuthPage() {
               }}
               aria-invalid={Boolean(emailError)}
               aria-describedby={
-                emailError ? 'email-error' : undefined
+                emailError
+                  ? 'email-error'
+                  : undefined
               }
               placeholder="adventurer@example.com"
               className={`w-full rounded-sm border-[3px] bg-[#f8eed6] px-4 py-3 text-bark outline-none ${
@@ -245,7 +270,9 @@ function AuthPage() {
               required
               minLength={6}
               autoComplete={
-                isSignup ? 'new-password' : 'current-password'
+                isSignup
+                  ? 'new-password'
+                  : 'current-password'
               }
               value={password}
               onChange={(e) => {
@@ -255,7 +282,9 @@ function AuthPage() {
               }}
               aria-invalid={Boolean(passwordError)}
               aria-describedby={
-                passwordError ? 'password-error' : undefined
+                passwordError
+                  ? 'password-error'
+                  : undefined
               }
               placeholder="Enter your password"
               className={`w-full rounded-sm border-[3px] bg-[#f8eed6] px-4 py-3 text-bark outline-none ${
@@ -355,7 +384,6 @@ function AuthPage() {
                 ? 'Create Account'
                 : 'Enter Guildhaven'}
           </button>
-
         </form>
       </div>
     </div>
