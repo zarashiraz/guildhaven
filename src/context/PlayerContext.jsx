@@ -1,4 +1,3 @@
-
 import {
   createContext,
   useContext,
@@ -45,17 +44,27 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     let active = true;
     let requestId = 0;
+    let loadedFor = null;
 
     async function loadProfile(authUser) {
       const id = ++requestId;
 
       if (!active) return;
 
-      setUser(authUser);
-      setLoading(true);
-      setProfileError('');
+      // Supabase re-announces the session now and then (tab focus, token refresh).
+      // For the same user, refresh quietly instead of showing the loading screen,
+      // which would close every page, including the Guild Hall connection.
+      const background = Boolean(authUser) && loadedFor === authUser.id;
+
+      setUser((prev) => (prev?.id === authUser?.id ? prev : authUser));
+
+      if (!background) {
+        setLoading(true);
+        setProfileError('');
+      }
 
       if (!authUser) {
+        loadedFor = null;
         setPlayer(null);
         setLoading(false);
         return;
@@ -71,13 +80,16 @@ export function PlayerProvider({ children }) {
 
       if (error) {
         console.error('Profile loading error:', error);
-        setProfileError(error.message);
-        setPlayer(null);
+        if (!background) {
+          setProfileError(error.message);
+          setPlayer(null);
+        }
       } else {
+        loadedFor = authUser.id;
         setPlayer(formatPlayer(data));
       }
 
-      setLoading(false);
+      if (!background) setLoading(false);
     }
 
     supabase.auth.getSession().then(({ data, error }) => {
