@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { usePlayer } from '../../context/PlayerContext';
 import { joinDuo } from '../../services/duoRoom';
 import { sessionName } from './pairing';
+
 import {
   ALL_IDS,
   PROBLEMS,
@@ -40,24 +41,32 @@ export default function DuoQuest({
   const [result, setResult] = useState(null);
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
+
   const [status, setStatus] = useState('connecting');
   const [partnerHere, setPartnerHere] = useState(false);
   const [everHere, setEverHere] = useState(false);
   const [waited, setWaited] = useState(false);
+
   const [reward, setReward] = useState('idle');
   const [rewardError, setRewardError] = useState('');
 
   const room = useRef(null);
   const selectedRef = useRef([]);
   const resultRef = useRef(null);
-  const rewardAttempted = useRef(false);
   const logRef = useRef(null);
+
+  const rewardAttempted = useRef(false);
+  const refreshPlayerRef = useRef(refreshPlayer);
 
   const evidence = careerEvidence(me.career);
 
   const partnerCareer =
     CAREER_INFO[normalizeCareer(partner.career)]?.name ??
     'Unknown career';
+
+  useEffect(() => {
+    refreshPlayerRef.current = refreshPlayer;
+  }, [refreshPlayer]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -68,15 +77,24 @@ export default function DuoQuest({
   }, [result]);
 
   useEffect(() => {
+    let active = true;
+
     const joined = joinDuo(
       sessionName(me.key, partner.key),
       me,
       {
-        onStatus: setStatus,
+        onStatus: nextStatus => {
+          if (active) setStatus(nextStatus);
+        },
 
         onPartnerHere: here => {
+          if (!active) return;
+
           setPartnerHere(here);
-          if (here) setEverHere(true);
+
+          if (here) {
+            setEverHere(true);
+          }
         },
 
         onPartnerJoined: () => {
@@ -88,46 +106,84 @@ export default function DuoQuest({
         },
 
         onMessage: msg => {
+          if (!active || !msg) return;
+
           if (
             msg.kind === 'toggle' &&
             ALL_IDS.includes(msg.id)
           ) {
-            setSelected(list => {
+            setSelected(previous => {
               const next = msg.on
-                ? [...new Set([...list, msg.id])]
-                : list.filter(id => id !== msg.id);
+                ? [...new Set([...previous, msg.id])]
+                : previous.filter(id => id !== msg.id);
 
               selectedRef.current = next;
+
               return next;
             });
 
             setResult(null);
             resultRef.current = null;
-          } else if (msg.kind === 'sync') {
-            setSelected(list => {
+          }
+
+          else if (msg.kind === 'sync') {
+            const incomingIds = Array.isArray(msg.selected)
+              ? msg.selected.filter(id => ALL_IDS.includes(id))
+              : [];
+
+            setSelected(previous => {
               const next = [
                 ...new Set([
-                  ...list,
-                  ...(msg.selected ?? []).filter(id =>
-                    ALL_IDS.includes(id)
-                  ),
+                  ...previous,
+                  ...incomingIds,
                 ]),
               ];
 
               selectedRef.current = next;
+
               return next;
             });
 
             if (msg.result) {
-              setResult(msg.result);
-              resultRef.current = msg.result;
+              const syncedResult = {
+                ...msg.result,
+                selectedIds:
+                  msg.result.selectedIds ??
+                  incomingIds,
+              };
+
+              setResult(syncedResult);
+              resultRef.current = syncedResult;
             }
-          } else if (msg.kind === 'result') {
-            setResult(msg.result);
-            resultRef.current = msg.result;
-          } else if (msg.kind === 'chat') {
-            setMessages(list => [
-              ...list.slice(-49),
+          }
+
+          else if (msg.kind === 'result') {
+            const incomingResult = {
+              ...msg.result,
+              selectedIds:
+                msg.result?.selectedIds ??
+                selectedRef.current,
+            };
+
+            setResult(incomingResult);
+            resultRef.current = incomingResult;
+
+            if (
+              Array.isArray(incomingResult.selectedIds)
+            ) {
+              const ids =
+                incomingResult.selectedIds.filter(id =>
+                  ALL_IDS.includes(id)
+                );
+
+              selectedRef.current = ids;
+              setSelected(ids);
+            }
+          }
+
+          else if (msg.kind === 'chat') {
+            setMessages(previous => [
+              ...previous.slice(-49),
               msg,
             ]);
           }
@@ -138,16 +194,19 @@ export default function DuoQuest({
     room.current = joined;
 
     return () => {
+      active = false;
       joined.leave();
-      room.current = null;
+
+      if (room.current === joined) {
+        room.current = null;
+      }
     };
   }, [me.key, partner.key]);
 
   useEffect(() => {
-    const timer = setTimeout(
-      () => setWaited(true),
-      25000
-    );
+    const timer = setTimeout(() => {
+      setWaited(true);
+    }, 25000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -171,9 +230,9 @@ export default function DuoQuest({
     partnerHere &&
     status === 'SUBSCRIBED';
 
-  // Each player claims their own reward using their
-  // authenticated Supabase account.
-  // The database prevents repeat awards.
+  // Award 100 XP to the currently signed-in player.
+  // Each player claims separately through Supabase.
+  // The database prevents duplicate rewards.
   useEffect(() => {
     if (!solved || rewardAttempted.current) {
       return;
@@ -188,11 +247,16 @@ export default function DuoQuest({
       setRewardError('');
 
       try {
-        const ids = result?.selectedIds;
+        const ids = Array.isArray(result?.selectedIds)
+          ? result.selectedIds
+          : [...selectedRef.current];
 
-        if (!Array.isArray(ids)) {
+        // Validate the answer locally before sending it.
+        const checked = scoreSelection(ids);
+
+        if (!checked.solved) {
           throw new Error(
-            'Missing verified answer. Please start a new investigation.'
+            'The selected orders could not be verified. Please retry the investigation.'
           );
         }
 
@@ -203,7 +267,9 @@ export default function DuoQuest({
           }
         );
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
         if (!active) return;
 
@@ -216,21 +282,25 @@ export default function DuoQuest({
         );
 
         try {
-          await refreshPlayer();
+          await refreshPlayerRef.current?.();
         } catch (refreshError) {
           console.error(
-            'XP awarded, but profile refresh failed:',
+            'XP saved but profile refresh failed:',
             refreshError
           );
         }
       } catch (err) {
-        console.error('Duo XP reward failed:', err);
+        console.error(
+          'Duo quest XP reward failed:',
+          err
+        );
 
         if (active) {
           setReward('error');
           setRewardError(
-            err.message ?? 'Could not claim XP.'
+            err?.message ?? 'Could not save XP.'
           );
+
           rewardAttempted.current = false;
         }
       }
@@ -241,7 +311,7 @@ export default function DuoQuest({
     return () => {
       active = false;
     };
-  }, [solved, result, refreshPlayer]);
+  }, [solved, result]);
 
   function toggle(id) {
     if (!canPlay) return;
@@ -254,6 +324,7 @@ export default function DuoQuest({
 
     selectedRef.current = next;
     setSelected(next);
+
     setResult(null);
     resultRef.current = null;
 
@@ -265,7 +336,10 @@ export default function DuoQuest({
   }
 
   function check() {
-    if (!canPlay || !selectedRef.current.length) {
+    if (
+      !canPlay ||
+      !selectedRef.current.length
+    ) {
       return;
     }
 
@@ -286,8 +360,18 @@ export default function DuoQuest({
     });
   }
 
-  function sendChat(e) {
-    e.preventDefault();
+  function retryReward() {
+    rewardAttempted.current = false;
+    setReward('idle');
+    setRewardError('');
+
+    setResult(previous =>
+      previous ? { ...previous } : previous
+    );
+  }
+
+  function sendChat(event) {
+    event.preventDefault();
 
     const clean = text.trim().slice(0, 140);
 
@@ -306,12 +390,13 @@ export default function DuoQuest({
       at: Date.now(),
     };
 
-    setMessages(list => [
-      ...list.slice(-49),
+    setMessages(previous => [
+      ...previous.slice(-49),
       msg,
     ]);
 
     room.current?.send(msg);
+
     setText('');
   }
 
@@ -328,8 +413,8 @@ export default function DuoQuest({
 
         <p className="mt-3 max-w-2xl text-sm leading-6">
           A café checkout mystery. Every career has
-          its own investigation. Solve the case
-          together and earn 100 XP each.
+          its own complete investigation. Solve the
+          case together and earn 100 XP each.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
@@ -388,7 +473,7 @@ export default function DuoQuest({
         >
           <p>
             Your partner is not connected.
-            Return to the Guild Hall to pair again.
+            Return to the Guild Hall and pair again.
           </p>
 
           <div className="mt-3">
@@ -438,41 +523,41 @@ export default function DuoQuest({
               <table className="w-full min-w-[520px] border-collapse text-left text-xs text-[#5b505c]">
                 <thead>
                   <tr className="bg-[#eee8f3]">
-                    {evidence.columns.map(h => (
+                    {evidence.columns.map(heading => (
                       <th
-                        key={h}
+                        key={heading}
                         className="border-b-2 border-[#c7b8ce] px-3 py-3"
                       >
-                        {h}
+                        {heading}
                       </th>
                     ))}
                   </tr>
                 </thead>
 
                 <tbody>
-                  {evidence.rows.map((r, i) => (
+                  {evidence.rows.map((row, index) => (
                     <tr
-                      key={r.id}
+                      key={row.id}
                       className={
-                        i % 2
+                        index % 2
                           ? 'bg-[#faf3ed]'
                           : 'bg-[#fffdf8]'
                       }
                     >
                       <td className="border-b border-[#e7dcd8] px-3 py-3 font-mono font-bold">
-                        {r.id}
+                        {row.id}
                       </td>
 
                       <td className="break-words border-b border-[#e7dcd8] px-3 py-3 font-mono">
-                        {r.main}
+                        {row.main}
                       </td>
 
                       <td className="border-b border-[#e7dcd8] px-3 py-3 font-mono">
-                        {r.expected}
+                        {row.expected}
                       </td>
 
                       <td className="border-b border-[#e7dcd8] px-3 py-3 font-mono">
-                        {r.observed}
+                        {row.observed}
                       </td>
                     </tr>
                   ))}
@@ -569,15 +654,15 @@ export default function DuoQuest({
 
                     <p className="mt-1 text-sm">
                       Added to your total XP and
-                      your current career XP.
+                      current career XP.
                     </p>
                   </div>
                 )}
 
                 {reward === 'already' && (
                   <p className="mt-2 text-sm">
-                    You've already earned the 100 XP
-                    reward for this quest.
+                    You've already claimed the
+                    100 XP reward for this quest.
                   </p>
                 )}
 
@@ -593,14 +678,7 @@ export default function DuoQuest({
                     <button
                       type="button"
                       className="mt-2 text-sm font-bold underline"
-                      onClick={() => {
-                        rewardAttempted.current = false;
-                        setReward('idle');
-                        setResult(prev => prev
-                          ? { ...prev }
-                          : prev
-                        );
-                      }}
+                      onClick={retryReward}
                     >
                       Retry reward
                     </button>
@@ -676,12 +754,12 @@ export default function DuoQuest({
               </li>
             )}
 
-            {messages.map((m, i) => (
-              <li key={`${m.at}-${i}`}>
+            {messages.map((message, index) => (
+              <li key={`${message.at}-${index}`}>
                 <strong className="text-[#92739b]">
-                  {m.username}:
+                  {message.username}:
                 </strong>{' '}
-                {m.text}
+                {message.text}
               </li>
             ))}
           </ul>
@@ -697,8 +775,8 @@ export default function DuoQuest({
 
               <input
                 value={text}
-                onChange={e =>
-                  setText(e.target.value)
+                onChange={event =>
+                  setText(event.target.value)
                 }
                 maxLength={140}
                 placeholder="Share your findings…"
