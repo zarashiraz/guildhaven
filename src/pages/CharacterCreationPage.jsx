@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -84,22 +83,15 @@ function CharacterCreationPage() {
   if (player) {
     return (
       <main className="mx-auto max-w-3xl p-8">
-<<<<<<< HEAD
         <h1 className="flex items-center gap-3 font-display text-5xl font-bold text-forest">
           Guildhaven
           <TulipIcon className="h-12 w-9" />
-        </h1>
-        <p className="mt-2 mb-6">Build your skills. Find your people. Shape your future.</p>
-=======
-        <h1 className="font-display text-5xl font-bold text-forest">
-          Guildhaven
         </h1>
 
         <p className="mb-6 mt-2">
           Build your skills. Find your people.
           Shape your future.
         </p>
->>>>>>> origin/backend
 
         <Panel title={`Welcome back, ${player.username}`}>
           <div className="flex flex-wrap items-center gap-4">
@@ -130,22 +122,15 @@ function CharacterCreationPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-8">
-<<<<<<< HEAD
       <h1 className="flex items-center gap-3 font-display text-5xl font-bold text-forest">
         Guildhaven
-      <TulipIcon className="h-12 w-9" />
-      </h1>
-      <p className="mt-2 mb-6">Build your skills. Find your people. Shape your future.</p>
-=======
-      <h1 className="font-display text-5xl font-bold text-forest">
-        Guildhaven
+        <TulipIcon className="h-12 w-9" />
       </h1>
 
       <p className="mb-6 mt-2">
         Build your skills. Find your people.
         Shape your future.
       </p>
->>>>>>> origin/backend
 
       <Panel title="Create your character">
         <form onSubmit={handleSubmit} noValidate>
