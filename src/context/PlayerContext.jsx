@@ -127,7 +127,7 @@ export function PlayerProvider({ children }) {
       throw new Error('Please choose a valid career path.');
     }
 
-    // Existing characters should load normally.
+    // Load an existing character if this user already has one.
     const { data: existing, error: checkError } =
       await supabase
         .from('profiles')
@@ -143,14 +143,14 @@ export function PlayerProvider({ children }) {
       return result;
     }
 
-    // Validate username format.
+    // Validate username formatting.
     const validationError = validateUsername(cleanUsername);
 
     if (validationError) {
       throw new Error(validationError);
     }
 
-    // Check availability before inserting.
+    // Check whether username is already taken.
     const { available, error: usernameError } =
       await checkUsername(cleanUsername);
 
@@ -160,10 +160,11 @@ export function PlayerProvider({ children }) {
 
     if (!available) {
       throw new Error(
-        'This username is already taken. Try another!'
+        'This username is already taken! Please choose another.'
       );
     }
 
+    // Create new character.
     const { data, error } = await supabase
       .from('profiles')
       .insert({
@@ -177,17 +178,12 @@ export function PlayerProvider({ children }) {
       .single();
 
     if (error) {
-      // The database unique index protects against
-      // two people choosing the same name simultaneously.
-      if (
-        error.code === '23505' &&
-        (
-          error.message?.includes('profiles_username_unique_ci') ||
-          error.details?.includes('username')
-        )
-      ) {
+      // Catch any duplicate username error from Supabase.
+      // This also protects against two people registering
+      // the same username at the same time.
+      if (error.code === '23505') {
         throw new Error(
-          'This username was just taken. Try another!'
+          'This username is already taken! Please choose another.'
         );
       }
 
