@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -140,18 +139,18 @@ function AuthPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 py-8">
 
-      {/* Guildhaven Title with Pixel Tulip */}
+      {/* Guildhaven Title with Tulip on the RIGHT */}
       <div className="mb-10 flex items-center justify-center gap-3 sm:gap-4">
+        <h1 className="font-display text-5xl font-bold text-forest sm:text-7xl">
+          Guildhaven
+        </h1>
+
         <img
           src="/favicon.svg"
           alt="Pink pixel tulip"
           className="h-12 w-12 shrink-0 object-contain sm:h-16 sm:w-16"
           style={{ imageRendering: 'pixelated' }}
         />
-
-        <h1 className="font-display text-5xl font-bold text-forest sm:text-7xl">
-          Guildhaven
-        </h1>
       </div>
 
       {/* Authentication Card */}
