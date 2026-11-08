@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Panel from '../components/ui/Panel';
 import { supabase } from '../lib/supabase';
+import { usePlayer } from '../context/PlayerContext';
 
 const CAREERS = [
   {
@@ -24,7 +25,7 @@ const CAREERS = [
     view: 'business_skill_trends',
   },
   {
-    id: 'data-science',
+    id: 'data_science',
     label: 'Data Science',
     bg: '#DFEFFA',
     active: '#A9D7F2',
@@ -34,15 +35,19 @@ const CAREERS = [
   },
 ];
 
+const normalizeCareer = (career) =>
+  String(career ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[ -]/g, '_');
+
 function QuestBoardPage() {
+  const { player, loading: playerLoading } = usePlayer();
+
+  const playerCareer = normalizeCareer(player?.career);
+
   const [selectedCareer, setSelectedCareer] = useState(null);
-
-  const [skillsByCareer, setSkillsByCareer] = useState({
-    swe: [],
-    business: [],
-    'data-science': [],
-  });
-
+  const [skillsByCareer, setSkillsByCareer] = useState({});
   const [skillErrors, setSkillErrors] = useState({});
   const [skillsLoading, setSkillsLoading] = useState(true);
 
@@ -50,6 +55,15 @@ function QuestBoardPage() {
   const [doneIds, setDoneIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Automatically select the player's career.
+  useEffect(() => {
+    if (!playerLoading && playerCareer) {
+      setSelectedCareer((current) =>
+        current ?? playerCareer
+      );
+    }
+  }, [playerCareer, playerLoading]);
 
   useEffect(() => {
     let active = true;
@@ -104,13 +118,13 @@ function QuestBoardPage() {
       setSkillsByCareer({
         swe: sweResult.data || [],
         business: businessResult.data || [],
-        'data-science': dataScienceResult.data || [],
+        data_science: dataScienceResult.data || [],
       });
 
       setSkillErrors({
         swe: sweResult.error?.message || '',
         business: businessResult.error?.message || '',
-        'data-science': dataScienceResult.error?.message || '',
+        data_science: dataScienceResult.error?.message || '',
       });
 
       setSkillsLoading(false);
@@ -118,19 +132,14 @@ function QuestBoardPage() {
       const user = authResult.data?.user;
 
       if (user) {
-        const {
-          data: completions,
-          error: completionError,
-        } = await supabase
-          .from('quest_completions')
-          .select('quest_id')
-          .eq('player_id', user.id);
+        const { data: completions, error: completionError } =
+          await supabase
+            .from('quest_completions')
+            .select('quest_id')
+            .eq('player_id', user.id);
 
         if (completionError) {
-          console.error(
-            'Completion lookup:',
-            completionError
-          );
+          console.error('Completion lookup:', completionError);
         } else if (active) {
           setDoneIds(
             (completions || []).map(
@@ -150,24 +159,33 @@ function QuestBoardPage() {
     };
   }, []);
 
-  function toggleCareer(careerId) {
-    setSelectedCareer((current) =>
-      current === careerId ? null : careerId
-    );
+  // Keep a career selected when clicking its button.
+  function selectCareer(careerId) {
+    setSelectedCareer(careerId);
   }
 
+  const activeCareer = selectedCareer || playerCareer;
+
   const selectedCareerInfo = CAREERS.find(
-    (career) => career.id === selectedCareer
+    (career) => career.id === activeCareer
   );
 
+  const isYourCareer = activeCareer === playerCareer;
+
   const visibleSkills = (
-    skillsByCareer[selectedCareer] || []
+    skillsByCareer[activeCareer] || []
   ).filter((skill) => Number(skill.percentage) > 0);
 
+  // Only display quests matching the selected career.
+  const visibleQuests = quests.filter(
+    (quest) =>
+      normalizeCareer(quest.career) === activeCareer
+  );
+
   const careerDescription =
-    selectedCareer === 'swe'
+    activeCareer === 'swe'
       ? 'software development'
-      : selectedCareer === 'business'
+      : activeCareer === 'business'
         ? 'business'
         : 'data science';
 
@@ -179,18 +197,17 @@ function QuestBoardPage() {
           then build those skills through Guildhaven quests.
         </p>
 
-        {/* Career buttons */}
+        {/* Career selection buttons */}
         <div className="flex flex-wrap gap-4 pb-4 pt-2">
           {CAREERS.map((career) => {
-            const selected =
-              selectedCareer === career.id;
+            const selected = activeCareer === career.id;
 
             return (
               <button
                 key={career.id}
                 type="button"
-                onClick={() => toggleCareer(career.id)}
-                aria-expanded={selected}
+                onClick={() => selectCareer(career.id)}
+                aria-pressed={selected}
                 aria-controls="career-skill-details"
                 style={{
                   backgroundColor: selected
@@ -226,7 +243,6 @@ function QuestBoardPage() {
               >
                 <span className="flex items-center gap-2">
                   {career.label}
-
                   <span aria-hidden="true">
                     {selected ? '⌃' : '⌄'}
                   </span>
@@ -236,8 +252,8 @@ function QuestBoardPage() {
           })}
         </div>
 
-        {/* Skill stats stay hidden until a career is selected */}
-        {selectedCareer && (
+        {/* Skill demand statistics */}
+        {selectedCareerInfo && (
           <div
             id="career-skill-details"
             className="
@@ -249,8 +265,14 @@ function QuestBoardPage() {
             "
           >
             <h3 className="mb-2 font-display text-xl text-bark">
-              {selectedCareerInfo?.label}
+              {selectedCareerInfo.label}
             </h3>
+
+            {isYourCareer && (
+              <p className="mb-3 text-sm font-bold text-forest">
+                ★ Your Career Path
+              </p>
+            )}
 
             <p className="mb-6 text-sm text-bark opacity-75">
               Based on sampled Canadian{' '}
@@ -264,15 +286,15 @@ function QuestBoardPage() {
               <p>Loading skill trends...</p>
             )}
 
-            {skillErrors[selectedCareer] && (
+            {skillErrors[activeCareer] && (
               <p className="text-red-700">
                 Could not load trends:{' '}
-                {skillErrors[selectedCareer]}
+                {skillErrors[activeCareer]}
               </p>
             )}
 
             {!skillsLoading &&
-              !skillErrors[selectedCareer] &&
+              !skillErrors[activeCareer] &&
               visibleSkills.length === 0 && (
                 <p>
                   No skill demand data available yet.
@@ -280,7 +302,7 @@ function QuestBoardPage() {
               )}
 
             {!skillsLoading &&
-              !skillErrors[selectedCareer] &&
+              !skillErrors[activeCareer] &&
               visibleSkills.length > 0 && (
                 <div className="space-y-5">
                   {visibleSkills.map((skill) => {
@@ -305,8 +327,7 @@ function QuestBoardPage() {
                           <span
                             className="font-display"
                             style={{
-                              color:
-                                selectedCareerInfo.text,
+                              color: selectedCareerInfo.text,
                             }}
                           >
                             {percentage.toFixed(1)}%
@@ -342,8 +363,28 @@ function QuestBoardPage() {
         )}
       </Panel>
 
-      {/* Existing Quest Board */}
+      {/* Quest Board follows the selected career */}
       <Panel title="Quest Board">
+        {selectedCareerInfo && (
+          <div className="mb-5">
+            <h3 className="font-display text-lg text-bark">
+              {selectedCareerInfo.label} Quests
+            </h3>
+
+            {isYourCareer ? (
+              <p className="mt-2 text-sm text-forest">
+                ★ Your career path. Complete these
+                quests to earn XP!
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-bark">
+                Explore these quests! XP can only be
+                earned for your selected career path.
+              </p>
+            )}
+          </div>
+        )}
+
         {loading && <p>Loading quests...</p>}
 
         {error && (
@@ -352,64 +393,68 @@ function QuestBoardPage() {
           </p>
         )}
 
-        {!loading && !error && quests.length === 0 && (
-          <p>No quests available yet.</p>
-        )}
+        {!loading &&
+          !error &&
+          visibleQuests.length === 0 && (
+            <p>No quests available for this career yet.</p>
+          )}
 
-        {!loading && !error && quests.length > 0 && (
-          <ul className="space-y-3">
-            {quests.map((quest) => {
-              const done = doneIds.includes(quest.id);
+        {!loading &&
+          !error &&
+          visibleQuests.length > 0 && (
+            <ul className="space-y-3">
+              {visibleQuests.map((quest) => {
+                const done = doneIds.includes(quest.id);
 
-              return (
-                <li
-                  key={quest.id}
-                  className="
-                    flex
-                    items-center
-                    justify-between
-                    gap-4
-                    border-b-2
-                    border-parchment
-                    pb-3
-                  "
-                >
-                  <div>
-                    <p className="font-display text-xl text-bark">
-                      {quest.title}
-                    </p>
+                return (
+                  <li
+                    key={quest.id}
+                    className="
+                      flex
+                      items-center
+                      justify-between
+                      gap-4
+                      border-b-2
+                      border-parchment
+                      pb-3
+                    "
+                  >
+                    <div>
+                      <p className="font-display text-xl text-bark">
+                        {quest.title}
+                      </p>
 
-                    <p>{quest.description}</p>
-                  </div>
+                      <p>{quest.description}</p>
+                    </div>
 
-                  {done ? (
-                    <span className="shrink-0 font-display text-forest">
-                      ✓ Done
-                    </span>
-                  ) : (
-                    <Link
-                      to={`/quests/${quest.id}`}
-                      className="
-                        shrink-0
-                        rounded-sm
-                        border-4
-                        border-bark
-                        bg-forest
-                        px-4 py-2
-                        font-display
-                        text-cream
-                        transition-transform
-                        hover:-translate-y-1
-                      "
-                    >
-                      Start (+{quest.xp_reward} XP)
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                    {done ? (
+                      <span className="shrink-0 font-display text-forest">
+                        ✓ Done
+                      </span>
+                    ) : (
+                      <Link
+                        to={`/quests/${quest.id}`}
+                        className="
+                          shrink-0
+                          rounded-sm
+                          border-4
+                          border-bark
+                          bg-forest
+                          px-4 py-2
+                          font-display
+                          text-cream
+                          transition-transform
+                          hover:-translate-y-1
+                        "
+                      >
+                        Start (+{quest.xp_reward} XP)
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
       </Panel>
     </div>
   );

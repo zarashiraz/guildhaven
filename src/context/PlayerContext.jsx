@@ -5,6 +5,10 @@ import {
   useState,
 } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  checkUsername,
+  validateUsername,
+} from '../services/friends';
 
 const PlayerContext = createContext(null);
 
@@ -125,7 +129,9 @@ export function PlayerProvider({ children }) {
       throw new Error('Please sign in first.');
     }
 
-    if (!username?.trim()) {
+    const cleanUsername = username?.trim() ?? '';
+
+    if (!cleanUsername) {
       throw new Error('Please enter a character name.');
     }
 
@@ -133,6 +139,7 @@ export function PlayerProvider({ children }) {
       throw new Error('Please choose a valid career path.');
     }
 
+    // Load an existing character if this user already has one.
     const { data: existing, error: checkError } =
       await supabase
         .from('profiles')
@@ -148,11 +155,33 @@ export function PlayerProvider({ children }) {
       return result;
     }
 
+    // Validate username formatting.
+    const validationError = validateUsername(cleanUsername);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    // Check whether username is already taken.
+    const { available, error: usernameError } =
+      await checkUsername(cleanUsername);
+
+    if (usernameError) {
+      throw new Error(usernameError);
+    }
+
+    if (!available) {
+      throw new Error(
+        'This username is already taken! Please choose another.'
+      );
+    }
+
+    // Create new character.
     const { data, error } = await supabase
       .from('profiles')
       .insert({
         id: user.id,
-        username: username.trim(),
+        username: cleanUsername,
         career,
         avatar,
         total_xp: 0,
@@ -160,7 +189,18 @@ export function PlayerProvider({ children }) {
       .select(PROFILE_FIELDS)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Catch any duplicate username error from Supabase.
+      // This also protects against two people registering
+      // the same username at the same time.
+      if (error.code === '23505') {
+        throw new Error(
+          'This username is already taken! Please choose another.'
+        );
+      }
+
+      throw error;
+    }
 
     const result = formatPlayer(data);
     setPlayer(result);

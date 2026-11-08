@@ -14,6 +14,7 @@ const navItems = [
   { to: '/village', label: 'Village' },
   { to: '/quests', label: 'Quest Board' },
   { to: '/guild', label: 'Guild Hall' },
+  { to: '/friends', label: 'Friends' },
   { to: '/portfolio', label: 'Portfolio' },
 ];
 
