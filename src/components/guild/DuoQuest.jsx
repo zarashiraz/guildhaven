@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Button from '../ui/Button';
 import Avatar from '../ui/Avatar';
+import { supabase } from '../../lib/supabase';
+import { usePlayer } from '../../context/PlayerContext';
 import { joinDuo } from '../../services/duoRoom';
 import { sessionName } from './pairing';
 import {
@@ -32,6 +34,8 @@ export default function DuoQuest({
   partner,
   onExit,
 }) {
+  const { refreshPlayer } = usePlayer();
+
   const [selected, setSelected] = useState([]);
   const [result, setResult] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -40,10 +44,13 @@ export default function DuoQuest({
   const [partnerHere, setPartnerHere] = useState(false);
   const [everHere, setEverHere] = useState(false);
   const [waited, setWaited] = useState(false);
+  const [reward, setReward] = useState('idle');
+  const [rewardError, setRewardError] = useState('');
 
   const room = useRef(null);
   const selectedRef = useRef([]);
   const resultRef = useRef(null);
+  const rewardAttempted = useRef(false);
   const logRef = useRef(null);
 
   const evidence = careerEvidence(me.career);
@@ -85,25 +92,39 @@ export default function DuoQuest({
             msg.kind === 'toggle' &&
             ALL_IDS.includes(msg.id)
           ) {
-            setSelected(list =>
-              msg.on
+            setSelected(list => {
+              const next = msg.on
                 ? [...new Set([...list, msg.id])]
-                : list.filter(id => id !== msg.id)
-            );
-            setResult(null);
-          } else if (msg.kind === 'sync') {
-            setSelected(list => [
-              ...new Set([
-                ...list,
-                ...(msg.selected ?? []).filter(id =>
-                  ALL_IDS.includes(id)
-                ),
-              ]),
-            ]);
+                : list.filter(id => id !== msg.id);
 
-            if (msg.result) setResult(msg.result);
+              selectedRef.current = next;
+              return next;
+            });
+
+            setResult(null);
+            resultRef.current = null;
+          } else if (msg.kind === 'sync') {
+            setSelected(list => {
+              const next = [
+                ...new Set([
+                  ...list,
+                  ...(msg.selected ?? []).filter(id =>
+                    ALL_IDS.includes(id)
+                  ),
+                ]),
+              ];
+
+              selectedRef.current = next;
+              return next;
+            });
+
+            if (msg.result) {
+              setResult(msg.result);
+              resultRef.current = msg.result;
+            }
           } else if (msg.kind === 'result') {
             setResult(msg.result);
+            resultRef.current = msg.result;
           } else if (msg.kind === 'chat') {
             setMessages(list => [
               ...list.slice(-49),
@@ -123,12 +144,12 @@ export default function DuoQuest({
   }, [me.key, partner.key]);
 
   useEffect(() => {
-    const t = setTimeout(
+    const timer = setTimeout(
       () => setWaited(true),
       25000
     );
 
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -150,6 +171,78 @@ export default function DuoQuest({
     partnerHere &&
     status === 'SUBSCRIBED';
 
+  // Each player claims their own reward using their
+  // authenticated Supabase account.
+  // The database prevents repeat awards.
+  useEffect(() => {
+    if (!solved || rewardAttempted.current) {
+      return;
+    }
+
+    rewardAttempted.current = true;
+
+    let active = true;
+
+    async function claimReward() {
+      setReward('claiming');
+      setRewardError('');
+
+      try {
+        const ids = result?.selectedIds;
+
+        if (!Array.isArray(ids)) {
+          throw new Error(
+            'Missing verified answer. Please start a new investigation.'
+          );
+        }
+
+        const { data, error } = await supabase.rpc(
+          'complete_duo_quest',
+          {
+            p_selected: ids,
+          }
+        );
+
+        if (error) throw error;
+
+        if (!active) return;
+
+        const response = Array.isArray(data)
+          ? data[0]
+          : data;
+
+        setReward(
+          response?.awarded ? 'earned' : 'already'
+        );
+
+        try {
+          await refreshPlayer();
+        } catch (refreshError) {
+          console.error(
+            'XP awarded, but profile refresh failed:',
+            refreshError
+          );
+        }
+      } catch (err) {
+        console.error('Duo XP reward failed:', err);
+
+        if (active) {
+          setReward('error');
+          setRewardError(
+            err.message ?? 'Could not claim XP.'
+          );
+          rewardAttempted.current = false;
+        }
+      }
+    }
+
+    claimReward();
+
+    return () => {
+      active = false;
+    };
+  }, [solved, result, refreshPlayer]);
+
   function toggle(id) {
     if (!canPlay) return;
 
@@ -162,6 +255,7 @@ export default function DuoQuest({
     selectedRef.current = next;
     setSelected(next);
     setResult(null);
+    resultRef.current = null;
 
     room.current?.send({
       kind: 'toggle',
@@ -175,12 +269,16 @@ export default function DuoQuest({
       return;
     }
 
+    const ids = [...selectedRef.current];
+
     const score = {
-      ...scoreSelection(selectedRef.current),
+      ...scoreSelection(ids),
+      selectedIds: ids,
       by: me.username,
     };
 
     setResult(score);
+    resultRef.current = score;
 
     room.current?.send({
       kind: 'result',
@@ -230,9 +328,8 @@ export default function DuoQuest({
 
         <p className="mt-3 max-w-2xl text-sm leading-6">
           A café checkout mystery. Every career has
-          its own complete investigation. Solve your
-          specialty and compare findings with your
-          partner.
+          its own investigation. Solve the case
+          together and earn 100 XP each.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
@@ -248,6 +345,10 @@ export default function DuoQuest({
             {partnerHere
               ? 'Partner connected'
               : 'Waiting for partner'}
+          </span>
+
+          <span className="border-2 border-[#cbbbd6] bg-[#fff5d8] px-3 py-2 font-bold">
+            Reward: 100 XP
           </span>
         </div>
       </header>
@@ -286,8 +387,8 @@ export default function DuoQuest({
           className="border-[3px] border-[#d6a0a6] bg-[#fff0f0] p-4"
         >
           <p>
-            Your partner is not connected. You can
-            return to the Guild Hall and pair again.
+            Your partner is not connected.
+            Return to the Guild Hall to pair again.
           </p>
 
           <div className="mt-3">
@@ -320,16 +421,16 @@ export default function DuoQuest({
 
           <div className="border-b border-[#e8dbd6] bg-[#fff9ed] p-4 text-sm leading-6">
             {evidence?.type === 'swe' &&
-              'Debug the checkout service. Every order has an event trace: ORDER_CREATED, CAPTURE, or CAPTURE_TIMEOUT. Find orders with missing captures, duplicate captures, incorrect captured values, or captures without an order event.'}
+              'Debug the checkout service. Trace ORDER_CREATED, CAPTURE, and CAPTURE_TIMEOUT events. Find missing captures, duplicate captures, incorrect values, and captures without orders.'}
 
             {evidence?.type === 'business' &&
-              'Audit the café books. Compare every invoice amount to its receipts. Flag unpaid invoices, short payments, duplicate receipts, and receipts without an invoice.'}
+              'Audit the café books. Compare invoices against receipts. Find unpaid invoices, short payments, duplicate receipts, and receipts without invoices.'}
 
             {evidence?.type === 'data_science' &&
-              'Investigate transaction features. Compare order counts, capture counts, expected values, and observed values. Flag missing observations, duplicate events, anomalous amounts, and orphan records.'}
+              'Compare transaction counts, expected values, and observed values. Identify missing observations, duplicate events, anomalous amounts, and orphan records.'}
 
             {!evidence &&
-              'Career not recognized. Check the career saved on your player profile.'}
+              'Career not recognized. Check your saved player profile.'}
           </div>
 
           {evidence && (
@@ -382,8 +483,7 @@ export default function DuoQuest({
 
           <p className="border-t-2 border-[#e5d9dc] bg-[#f7f1f7] p-3 text-xs">
             Your partner sees their own career's
-            investigation. Either career can solve
-            the case independently.
+            investigation. Share findings through chat.
           </p>
         </section>
 
@@ -401,16 +501,14 @@ export default function DuoQuest({
             </h3>
 
             <p className="mt-1 text-sm">
-              Both players can select and check
-              the same answer.
+              Both players share the same answer.
             </p>
           </div>
 
           <div className="p-4">
             <p className="mb-3 text-sm leading-6">
-              Investigate your career evidence.
-              Mark every order with a problem,
-              then check the shared board.
+              Investigate your evidence, mark every
+              faulty order, and close the case.
             </p>
 
             <div className="grid grid-cols-3 gap-2">
@@ -442,25 +540,86 @@ export default function DuoQuest({
               }`}
             >
               {solved
-                ? 'Case closed! You identified every faulty order.'
+                ? 'Case closed! Every faulty order was found.'
                 : result
                   ? `${result.by} checked: ${result.right} correct, ${result.wrong} incorrect, ${result.missed} missing.`
-                  : 'Compare findings, then mark all suspicious orders.'}
+                  : 'Compare findings, then mark the suspicious orders.'}
             </div>
 
             {solved && (
-              <div className="mt-3 border-2 border-[#b8d0be] bg-[#f3faf3] p-3 text-sm">
-                <p className="mb-2 font-bold">
-                  Investigation report
+              <div className="mt-4 border-[3px] border-[#a3c3ab] bg-[#eef8ef] p-4">
+                <p className="font-display text-lg text-[#4f7361]">
+                  Investigation Complete!
                 </p>
 
-                {Object.entries(PROBLEMS).map(
-                  ([id, why]) => (
-                    <p key={id}>
-                      <strong>{id}</strong>: {why}
-                    </p>
-                  )
+                {reward === 'claiming' && (
+                  <p className="mt-2 text-sm">
+                    Saving your XP reward…
+                  </p>
                 )}
+
+                {reward === 'earned' && (
+                  <div
+                    role="status"
+                    className="mt-3 border-2 border-[#d6c28d] bg-[#fff4cb] p-3"
+                  >
+                    <p className="font-display text-xl text-[#85662f]">
+                      +100 XP Earned!
+                    </p>
+
+                    <p className="mt-1 text-sm">
+                      Added to your total XP and
+                      your current career XP.
+                    </p>
+                  </div>
+                )}
+
+                {reward === 'already' && (
+                  <p className="mt-2 text-sm">
+                    You've already earned the 100 XP
+                    reward for this quest.
+                  </p>
+                )}
+
+                {reward === 'error' && (
+                  <div
+                    role="alert"
+                    className="mt-3 border-2 border-[#d6a0a6] bg-[#fff0f0] p-3"
+                  >
+                    <p className="text-sm">
+                      XP could not be saved: {rewardError}
+                    </p>
+
+                    <button
+                      type="button"
+                      className="mt-2 text-sm font-bold underline"
+                      onClick={() => {
+                        rewardAttempted.current = false;
+                        setReward('idle');
+                        setResult(prev => prev
+                          ? { ...prev }
+                          : prev
+                        );
+                      }}
+                    >
+                      Retry reward
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-4 space-y-1 text-sm">
+                  <p className="mb-2 font-bold">
+                    Investigation report
+                  </p>
+
+                  {Object.entries(PROBLEMS).map(
+                    ([id, why]) => (
+                      <p key={id}>
+                        <strong>{id}</strong>: {why}
+                      </p>
+                    )
+                  )}
+                </div>
               </div>
             )}
 
