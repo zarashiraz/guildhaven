@@ -14,7 +14,7 @@ export const BLOCKED = [
   [17, 2, 3, 1], // dish hutch
   [12, 4, 4, 2], // table A
   [12, 8, 4, 2], // table B
-  [3, 6, 4, 2], // duo quest table
+  [3, 6, 4, 2], // quest table
   [18, 5, 1, 1], // plant
   [18, 9, 1, 1], // plant
 ];
@@ -28,6 +28,13 @@ export const STOOLS = [
 
 export function isStool(x, y) {
   return STOOLS.some(([sx, sy]) => sx === x && sy === y);
+}
+
+// The four stools at the Quest Table. Sit on one to look for a partner.
+export const DUO_SEATS = [[2, 6], [2, 7], [7, 6], [7, 7]];
+
+export function isDuoSeat(x, y) {
+  return DUO_SEATS.some(([sx, sy]) => sx === x && sy === y);
 }
 
 export function isWalkable(x, y) {

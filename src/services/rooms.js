@@ -121,6 +121,10 @@ export function joinTavern(player, tabId, start, handlers) {
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         if (!left && channel === ch) handlers.onChat(payload);
       })
+      // Pairing messages (asking someone to do the duo quest, or taking the ask back)
+      .on('broadcast', { event: 'pair' }, ({ payload }) => {
+        if (!left && channel === ch) handlers.onPair?.(payload);
+      })
       .subscribe(async (status, error) => {
         if (left || channel !== ch) return;
 
@@ -197,6 +201,14 @@ export function joinTavern(player, tabId, start, handlers) {
       }
       if (sendTimer) return;
       sendTimer = setTimeout(sendPosition, Math.max(0, 250 - (Date.now() - lastSent)));
+    },
+
+    // Ask someone to pair, or take the ask back. payload: { kind, from, to, name, avatar }
+    pair(payload) {
+      if (!joined || !channel) return;
+      channel
+        .send({ type: 'broadcast', event: 'pair', payload })
+        .catch((err) => console.error('Pair message failed:', err));
     },
 
     async say(text) {
