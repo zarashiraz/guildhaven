@@ -4,6 +4,12 @@ import GameFrame from '../../components/games/GameFrame';
 import { ROWS, CHALLENGES, parseWindow, runWindow } from './sqlEngine';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const PARTS = [
+  'a calculation (SUM or AVG), and a PARTITION BY.',
+  'a ranking function with no column inside the brackets, a PARTITION BY, and an ORDER BY with DESC.',
+  'a function that looks at an earlier row, a PARTITION BY, and an ORDER BY.',
+  'a SUM, a PARTITION BY, and an ORDER BY.',
+];
 const show = (v) => (v === null ? 'NULL' : String(v));
 
 function QueryLibrary({ onComplete }) {
@@ -43,19 +49,55 @@ function QueryLibrary({ onComplete }) {
       howToPlay={[
         'The librarian keeps a table called loans: how many times each book was borrowed each month.',
         'She asks 4 questions. Each answer is one new column, made with a SQL window function.',
-        'Type the window expression, for example: SUM(loans) OVER (PARTITION BY genre).',
-        'Press "Run query" to see your new column next to the expected one. Match the librarian to move on.',
+        'Read the "How to read a window function" box below. It shows what each part of the expression does.',
+        'Type only the window expression into the dark box, then press "Run query".',
+        'You will see your new column next to the expected one. Match the librarian to move on.',
       ]}
       hint={challenge.hint}
       won={won}
       winMessage="You wrote four real SQL window functions: a partitioned total, a rank with ties, LAG, and a running total."
       onComplete={onComplete}
     >
+      <div className="rounded-sm border-4 border-gold bg-parchment p-4">
+        <h3 className="font-display text-xl font-bold text-bark">How to read a window function</h3>
+        <p className="mt-1">
+          A window function adds a new column. Every row stays in the table, and each row gets an answer worked out from a
+          group of rows around it.
+        </p>
+        <p className="mt-2 rounded-sm bg-ink p-2 font-mono text-base text-cream">
+          SUM(loans) OVER (PARTITION BY genre ORDER BY month)
+        </p>
+        <ul className="mt-2 list-disc space-y-1 pl-6">
+          <li>
+            <strong>SUM(loans)</strong> is the calculation. Other choices: AVG(loans), RANK(), LAG(loans).
+          </li>
+          <li>
+            <strong>OVER ( … )</strong> means &quot;do it for every row, but do not squash the rows together&quot;.
+          </li>
+          <li>
+            <strong>PARTITION BY genre</strong> splits the rows into separate groups, one per genre. Each group is
+            calculated on its own.
+          </li>
+          <li>
+            <strong>ORDER BY month</strong> puts the rows in order inside each group. You only need it when order matters,
+            like ranking, LAG, or a running total.
+          </li>
+        </ul>
+        <p className="mt-2">
+          <strong>Example (not one of the answers):</strong> <code>AVG(loans) OVER (PARTITION BY genre)</code> gives every
+          Fantasy row the average loans of all Fantasy rows (about 54), and every Mystery row the average of all Mystery
+          rows (about 33).
+        </p>
+      </div>
+
       <div className="rounded-sm border-4 border-wood bg-parchment p-4">
         <p className="font-display text-lg font-bold text-bark">
           Question {index + 1} of {CHALLENGES.length}
         </p>
         <p className="mt-1 text-lg">{challenge.ask}</p>
+        <p className="mt-1">
+          <strong>Parts you will need:</strong> {PARTS[index]}
+        </p>
 
         <div className="mt-3 rounded-sm border-4 border-bark bg-ink p-3 font-mono text-base text-cream">
           <p>SELECT title, genre, month, loans,</p>

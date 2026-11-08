@@ -9,6 +9,9 @@ import StakeholderSummit from '../games/stakeholderSummit/StakeholderSummit';
 import LedgerDetective from '../games/ledgerDetective/LedgerDetective';
 import GradientGarden from '../games/gradientGarden/GradientGarden';
 import QueryLibrary from '../games/queryLibrary/QueryLibrary';
+import RoadPlanner from '../games/roadPlanner/RoadPlanner';
+import FestivalForecast from '../games/festivalForecast/FestivalForecast';
+import PotionTrials from '../games/potionTrials/PotionTrials';
 
 const normalizeCareer = (id) =>
   String(id ?? '').toLowerCase().replace(/[ -]/g, '_');
@@ -135,7 +138,8 @@ function QuestPage() {
       );
     } catch (err) {
       throw new Error(
-        err.message || 'Could not complete quest.'
+        err.message || 'Could not complete quest.',
+        { cause: err }
       );
     } finally {
       setSaving(false);
@@ -148,14 +152,20 @@ function QuestPage() {
         return <PostOfficeRush onComplete={handleQuestComplete} />;
       case 2:
         return <DeadlockBakery onComplete={handleQuestComplete} />;
+      case 3:
+        return <RoadPlanner onComplete={handleQuestComplete} />;
       case 4:
         return <StakeholderSummit onComplete={handleQuestComplete} />;
       case 5:
         return <LedgerDetective onComplete={handleQuestComplete} />;
+      case 6:
+        return <FestivalForecast onComplete={handleQuestComplete} />;
       case 7:
         return <GradientGarden onComplete={handleQuestComplete} />;
       case 8:
         return <QueryLibrary onComplete={handleQuestComplete} />;
+      case 9:
+        return <PotionTrials onComplete={handleQuestComplete} />;
       default:
         return (
           <div className="my-6 rounded-sm border-4 border-dashed border-wood p-8 text-center">
