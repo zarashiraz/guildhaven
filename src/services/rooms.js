@@ -7,7 +7,8 @@ const ROOM_NAME = 'guild-hall';
 
 // player: { id, username, avatar, career }, tabId: any short unique string, start: { x, y }
 // handlers: { onPlayers(list), onChat(message), onStatus(text) }
-// Returns { move(x, y), say(text), leave() }
+// Returns { key, move(x, y), say(text), leave() }
+// If the connection drops, it reconnects by itself.
 export function joinTavern(player, tabId, start, handlers) {
   // Each browser tab gets its own key, so you can test with two tabs on one account.
   const key = `${player.id}:${tabId}`;
@@ -20,34 +21,83 @@ export function joinTavern(player, tabId, start, handlers) {
     y: start.y,
   };
 
-  const channel = supabase.channel(ROOM_NAME, {
-    config: { presence: { key }, broadcast: { self: true } },
-  });
+  let channel = null;
+  let left = false;
+  let retryTimer = null;
+  let retries = 0;
 
-  channel
-    .on('presence', { event: 'sync' }, () => {
-      const state = channel.presenceState();
+  function connect() {
+    if (left) return;
+    const ch = supabase.channel(ROOM_NAME, {
+      config: { presence: { key }, broadcast: { self: true } },
+    });
+    channel = ch;
+
+    ch.on('presence', { event: 'sync' }, () => {
+      if (channel !== ch) return;
+      const state = ch.presenceState();
       const list = Object.entries(state).map(([k, metas]) => ({
         key: k,
         ...metas[metas.length - 1],
       }));
       handlers.onPlayers(list);
     })
-    .on('broadcast', { event: 'chat' }, ({ payload }) => handlers.onChat(payload))
-    .subscribe(async (status) => {
-      handlers.onStatus(status);
-      if (status === 'SUBSCRIBED') {
-        await channel.track(me);
-      }
-    });
+      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+        if (channel === ch) handlers.onChat(payload);
+      })
+      .subscribe(async (status) => {
+        if (left || channel !== ch) return;
+        handlers.onStatus(status);
+        if (status === 'SUBSCRIBED') {
+          retries = 0;
+          await ch.track(me);
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          scheduleReconnect();
+        }
+      });
+  }
+
+  function reconnectNow() {
+    if (left) return;
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    const old = channel;
+    channel = null;
+    if (old) supabase.removeChannel(old);
+    connect();
+  }
+
+  function scheduleReconnect() {
+    if (left || retryTimer) return;
+    const wait = Math.min(1000 * 2 ** retries, 8000);
+    retries += 1;
+    retryTimer = setTimeout(reconnectNow, wait);
+  }
+
+  // Coming back to the tab or the internet: make sure we are connected and visible.
+  function wake() {
+    if (left) return;
+    if (document.visibilityState === 'hidden') return;
+    if (channel && channel.state === 'joined') {
+      channel.track(me);
+    } else {
+      retries = 0;
+      reconnectNow();
+    }
+  }
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('online', wake);
+
+  connect();
 
   return {
     key,
     move(x, y) {
       me = { ...me, x, y };
-      channel.track(me);
+      if (channel && channel.state === 'joined') channel.track(me);
     },
     say(text) {
+      if (!channel || channel.state !== 'joined') return;
       channel.send({
         type: 'broadcast',
         event: 'chat',
@@ -61,7 +111,13 @@ export function joinTavern(player, tabId, start, handlers) {
       });
     },
     leave() {
-      supabase.removeChannel(channel);
+      left = true;
+      clearTimeout(retryTimer);
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('online', wake);
+      const old = channel;
+      channel = null;
+      if (old) supabase.removeChannel(old);
     },
   };
 }
