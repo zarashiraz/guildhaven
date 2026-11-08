@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Panel from '../components/ui/Panel';
 import { supabase } from '../lib/supabase';
+import PostOfficeRush from '../games/postOfficeRush/PostOfficeRush';
 
 function QuestPage() {
   const { questId } = useParams();
@@ -124,6 +125,8 @@ function QuestPage() {
 
   function renderMinigame() {
     switch (Number(quest.id)) {
+      case 1:
+        return <PostOfficeRush onComplete={handleQuestComplete} />;
       default:
         return (
           <div className="my-6 rounded-sm border-4 border-dashed border-wood p-8 text-center">
