@@ -6,6 +6,10 @@ import {
   useState,
 } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  checkUsername,
+  validateUsername,
+} from '../services/friends';
 
 const PlayerContext = createContext(null);
 
@@ -113,7 +117,9 @@ export function PlayerProvider({ children }) {
       throw new Error('Please sign in first.');
     }
 
-    if (!username?.trim()) {
+    const cleanUsername = username?.trim() ?? '';
+
+    if (!cleanUsername) {
       throw new Error('Please enter a character name.');
     }
 
@@ -121,6 +127,7 @@ export function PlayerProvider({ children }) {
       throw new Error('Please choose a valid career path.');
     }
 
+    // Existing characters should load normally.
     const { data: existing, error: checkError } =
       await supabase
         .from('profiles')
@@ -136,11 +143,32 @@ export function PlayerProvider({ children }) {
       return result;
     }
 
+    // Validate username format.
+    const validationError = validateUsername(cleanUsername);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    // Check availability before inserting.
+    const { available, error: usernameError } =
+      await checkUsername(cleanUsername);
+
+    if (usernameError) {
+      throw new Error(usernameError);
+    }
+
+    if (!available) {
+      throw new Error(
+        'This username is already taken. Try another!'
+      );
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .insert({
         id: user.id,
-        username: username.trim(),
+        username: cleanUsername,
         career,
         avatar,
         total_xp: 0,
@@ -148,7 +176,23 @@ export function PlayerProvider({ children }) {
       .select(PROFILE_FIELDS)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // The database unique index protects against
+      // two people choosing the same name simultaneously.
+      if (
+        error.code === '23505' &&
+        (
+          error.message?.includes('profiles_username_unique_ci') ||
+          error.details?.includes('username')
+        )
+      ) {
+        throw new Error(
+          'This username was just taken. Try another!'
+        );
+      }
+
+      throw error;
+    }
 
     const result = formatPlayer(data);
     setPlayer(result);

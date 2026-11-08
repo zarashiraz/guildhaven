@@ -9,6 +9,7 @@ import VillagePage from './pages/VillagePage';
 import QuestBoardPage from './pages/QuestBoardPage';
 import QuestPage from './pages/QuestPage';
 import GuildHallPage from './pages/GuildHallPage';
+import FriendsPage from './pages/FriendsPage';
 import PortfolioPage from './pages/PortfolioPage';
 
 function LoadingScreen() {
@@ -90,6 +91,7 @@ function App() {
           element={<QuestPage />}
         />
         <Route path="/guild" element={<GuildHallPage />} />
+        <Route path="/friends" element={<FriendsPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
       </Route>
 

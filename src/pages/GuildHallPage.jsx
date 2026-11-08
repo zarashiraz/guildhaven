@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from 'react';
 import Panel from '../components/ui/Panel';
 import Button from '../components/ui/Button';
@@ -56,7 +57,12 @@ function GuildHallPage() {
     let room = null;
     const timer = setTimeout(() => {
       room = joinTavern(
-        { id: playerId, username: playerName, avatar: playerAvatar, career: playerCareer },
+        {
+          id: playerId,
+          username: playerName,
+          avatar: playerAvatar,
+          career: playerCareer,
+        },
         tabId,
         startPos.current,
         {
@@ -86,9 +92,11 @@ function GuildHallPage() {
     };
   }, [playerId, playerName, playerAvatar, playerCareer, tabId]);
 
-  // Keep the chat scrolled to the newest message
+  // Keep the chat scrolled to the newest message.
   useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
   }, [messages, chatOpen]);
 
   function moveTo(x, y) {
@@ -114,6 +122,7 @@ function GuildHallPage() {
   const everyone = others
     .filter((o) => o.key !== myKey)
     .map((o) => ({ ...o, isSelf: false }));
+
   everyone.push({
     key: myKey,
     username: playerName ?? 'You',
@@ -124,7 +133,11 @@ function GuildHallPage() {
     isSelf: true,
   });
 
-  const shownStatus = STATUS[status] ?? { text: status, dot: 'bg-gold' };
+  const shownStatus = STATUS[status] ?? {
+    text: status,
+    dot: 'bg-gold',
+  };
+
   const recent = messages.slice(-30);
 
   return (
@@ -133,7 +146,10 @@ function GuildHallPage() {
         {/* The tavern, sized to fit the screen, with the chat floating in the corner */}
         <div
           className="relative mx-auto w-full lg:mx-0"
-          style={{ maxWidth: '100%', width: 'min(calc((100vh - 15rem) * 1.6667), max(20rem, calc(100vw - 24rem)))' }}
+          style={{
+            maxWidth: '100%',
+            width: 'min(calc((100vh - 15rem) * 1.6667), max(20rem, calc(100vw - 24rem)))',
+          }}
         >
           <TavernScene
             players={everyone}
@@ -141,7 +157,9 @@ function GuildHallPage() {
             onTile={moveTo}
             onStep={(dx, dy) => moveTo(pos.x + dx, pos.y + dy)}
             onQuestTable={() =>
-              setNotice('Duo quests are opening soon. Sit here with a friend to take on a quest together.')
+              setNotice(
+                'Duo quests are opening soon. Sit here with a friend to take on a quest together.'
+              )
             }
           />
 
@@ -151,14 +169,21 @@ function GuildHallPage() {
               className="absolute bottom-3 left-1/2 w-[min(22rem,80%)] -translate-x-1/2 rounded-sm border-4 border-gold bg-parchment p-2 text-center shadow-[3px_3px_0_0_var(--color-bark)]"
             >
               <p>{notice}</p>
-              <button type="button" onClick={() => setNotice('')} className="mt-1 underline">
+              <button
+                type="button"
+                onClick={() => setNotice('')}
+                className="mt-1 underline"
+              >
                 Got it
               </button>
             </div>
           )}
 
           {/* Chat floats over the top-left corner */}
-          <section aria-label="Guild chat" className="absolute left-3 top-3 w-[min(17rem,60%)]">
+          <section
+            aria-label="Guild chat"
+            className="absolute left-3 top-3 w-[min(17rem,60%)]"
+          >
             <button
               type="button"
               aria-expanded={chatOpen}
@@ -167,6 +192,7 @@ function GuildHallPage() {
             >
               {chatOpen ? 'Hide chat' : 'Show chat'}
             </button>
+
             {chatOpen && (
               <>
                 <ul
@@ -175,16 +201,30 @@ function GuildHallPage() {
                   aria-live="polite"
                   className="mb-1 max-h-24 space-y-0.5 overflow-y-auto rounded-sm bg-ink/70 p-2 text-base text-cream"
                 >
-                  {recent.length === 0 && <li className="italic">No messages yet. Say hello!</li>}
+                  {recent.length === 0 && (
+                    <li className="italic">
+                      No messages yet. Say hello!
+                    </li>
+                  )}
+
                   {recent.map((m, i) => (
                     <li key={`${m.at}-${i}`}>
-                      <strong className="text-gold">{m.username}:</strong> {m.text}
+                      <strong className="text-gold">
+                        {m.username}:
+                      </strong>{' '}
+                      {m.text}
                     </li>
                   ))}
                 </ul>
-                <form onSubmit={sendMessage} className="flex gap-1">
+
+                <form
+                  onSubmit={sendMessage}
+                  className="flex gap-1"
+                >
                   <label className="min-w-0 flex-1">
-                    <span className="sr-only">Your message</span>
+                    <span className="sr-only">
+                      Your message
+                    </span>
                     <input
                       type="text"
                       value={text}
@@ -197,10 +237,16 @@ function GuildHallPage() {
                       className="w-full rounded-sm border-4 border-bark bg-cream px-2 py-1"
                     />
                   </label>
-                  <Button type="submit">Send</Button>
+                  <Button type="submit">
+                    Send
+                  </Button>
                 </form>
+
                 {chatNote && (
-                  <p role="alert" className="mt-1 rounded-sm bg-parchment p-1 text-base font-bold text-coral">
+                  <p
+                    role="alert"
+                    className="mt-1 rounded-sm bg-parchment p-1 text-base font-bold text-coral"
+                  >
                     {chatNote}
                   </p>
                 )}
@@ -210,27 +256,52 @@ function GuildHallPage() {
         </div>
 
         {/* Who is here */}
-        <section aria-label="Who is here" className="rounded-sm border-4 border-wood bg-parchment p-3">
-          <p role="status" className="mb-2 flex items-center gap-2 text-base font-bold">
-            <span aria-hidden="true" className={`inline-block h-3 w-3 rounded-full ${shownStatus.dot}`} />
+        <section
+          aria-label="Who is here"
+          className="rounded-sm border-4 border-wood bg-parchment p-3"
+        >
+          <p
+            role="status"
+            className="mb-2 flex items-center gap-2 text-base font-bold"
+          >
+            <span
+              aria-hidden="true"
+              className={`inline-block h-3 w-3 rounded-full ${shownStatus.dot}`}
+            />
             {shownStatus.text}
           </p>
-          <h3 className="font-display text-lg font-bold text-bark">Here now ({everyone.length})</h3>
+
+          <h3 className="font-display text-lg font-bold text-bark">
+            Here now ({everyone.length})
+          </h3>
+
           <ul className="mt-2 max-h-[22rem] space-y-2 overflow-y-auto">
             {everyone.map((p) => (
-              <li key={p.key} className="flex items-center gap-2">
-                <Avatar id={p.avatar} className="h-8 w-8 shrink-0" />
+              <li
+                key={p.key}
+                className="flex items-center gap-2"
+              >
+                <Avatar
+                  id={p.avatar}
+                  className="h-8 w-8 shrink-0"
+                />
+
                 <span className="min-w-0 leading-tight">
                   <strong className="block truncate">
                     {p.username}
                     {p.isSelf && ' (you)'}
                   </strong>
-                  <span className="text-base">{careerName(p.career)}</span>
+                  <span className="text-base">
+                    {careerName(p.career)}
+                  </span>
                 </span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-base">Click the floor or use the arrow keys to walk.</p>
+
+          <p className="mt-3 text-base">
+            Click the floor or use the arrow keys to walk.
+          </p>
         </section>
       </div>
     </Panel>
