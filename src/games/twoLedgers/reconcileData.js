@@ -1,5 +1,5 @@
 
- // Shared mystery data. Each player sees a career-flavoured view of one half.
+ // The Two Ledgers: one mystery, independent career-specific investigations.
 export const ORDERS = [
   { id: 'O-101', item: 'Sourdough loaf', amount: 24.5 },
   { id: 'O-102', item: 'Cinnamon rolls', amount: 18 },
@@ -33,20 +33,22 @@ export const money = n => `$${Number(n).toFixed(2)}`;
 
 export function findProblems() {
   const problems = {};
-  const paidBy = {};
+  const byOrder = {};
 
   for (const p of PAYMENTS) {
-    (paidBy[p.orderId] ??= []).push(p);
+    (byOrder[p.orderId] ??= []).push(p);
   }
 
   for (const o of ORDERS) {
-    const pays = paidBy[o.id] ?? [];
+    const pays = byOrder[o.id] ?? [];
 
     if (!pays.length) {
       problems[o.id] = 'Never paid';
     } else if (pays.length > 1) {
       problems[o.id] = 'Charged twice';
-    } else if (Math.abs(pays[0].amount - o.amount) > 0.001) {
+    } else if (
+      Math.abs(pays[0].amount - o.amount) > 0.001
+    ) {
       problems[o.id] = 'Paid the wrong amount';
     }
   }
@@ -81,82 +83,136 @@ export function scoreSelection(selected) {
 }
 
 export const normalizeCareer = value =>
-  String(value ?? '').toLowerCase().replace(/[ -]/g, '_');
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[ -]/g, '_');
 
 export const CAREER_INFO = {
   swe: {
     name: 'Software Engineering',
-    title: 'The Debug Console',
-    subtitle: 'Trace the café’s order and payment events.',
-    accent: 'violet',
+    title: 'The Broken Checkout',
+    subtitle:
+      'Debug the payment processor and find faulty transactions.',
+    skill: 'Event tracing & debugging',
   },
   business: {
     name: 'Business',
-    title: 'The Accounts Office',
-    subtitle: 'Audit invoices and receipts.',
-    accent: 'rose',
+    title: 'The Missing Revenue',
+    subtitle:
+      'Reconcile invoices and payments to find discrepancies.',
+    skill: 'Financial reconciliation',
   },
   data_science: {
     name: 'Data Science',
-    title: 'The Pattern Lab',
-    subtitle: 'Compare records and hunt anomalies.',
-    accent: 'mint',
+    title: 'The Anomaly Lab',
+    subtitle:
+      'Analyze expected versus observed transaction patterns.',
+    skill: 'Anomaly detection',
   },
 };
 
-// The smaller stable player key always gets source A;
-// the other gets source B.
 export function sideFor(meKey, partnerKey) {
   return String(meKey) < String(partnerKey) ? 'A' : 'B';
 }
 
-export function careerEvidence(career, side) {
+// Each career has enough evidence to solve the case independently.
+export function careerEvidence(career) {
   const kind = normalizeCareer(career);
-  const type = CAREER_INFO[kind] ? kind : 'business';
-  const isA = side === 'A';
+  const type = CAREER_INFO[kind] ? kind : null;
 
-  const rows = isA
-    ? ORDERS.map((o, i) => ({
-        key: o.id,
-        id: o.id,
-        detail: o.item,
-        amount: o.amount,
-        seq: i + 1,
-      }))
-    : PAYMENTS.map((p, i) => ({
-        key: p.ref,
-        id: p.orderId,
-        detail: p.ref,
-        amount: p.amount,
-        seq: i + 1,
-      }));
+  if (!type) return null;
 
-  const headers = {
-    swe: isA
-      ? ['Event ID', 'Payload', 'Expected value']
-      : ['Event ID', 'Linked order', 'Captured value'],
+  const paymentsByOrder = Object.fromEntries(
+    ALL_IDS.map(id => [
+      id,
+      PAYMENTS.filter(p => p.orderId === id),
+    ])
+  );
 
-    business: isA
-      ? ['Invoice', 'Description', 'Amount due']
-      : ['Receipt', 'Invoice', 'Amount received'],
+  const ordersById = Object.fromEntries(
+    ORDERS.map(o => [o.id, o])
+  );
 
-    data_science: isA
-      ? ['Record ID', 'Category', 'Expected ($)']
-      : ['Sample ID', 'Order ID', 'Observed ($)'],
+  const rows = ALL_IDS.map(id => {
+    const order = ordersById[id];
+    const payments = paymentsByOrder[id];
+
+    if (type === 'swe') {
+      const events = [
+        order ? 'ORDER_CREATED' : 'NO_ORDER_EVENT',
+        ...payments.map(
+          p => `CAPTURE(${p.ref},${money(p.amount)})`
+        ),
+      ];
+
+      if (order && !payments.length) {
+        events.push('CAPTURE_TIMEOUT');
+      }
+
+      return {
+        id,
+        main: events.join(' → '),
+        expected: order
+          ? money(order.amount)
+          : 'NO ORDER',
+        observed: payments.length
+          ? payments.map(p => money(p.amount)).join(' + ')
+          : 'NO CAPTURE',
+      };
+    }
+
+    if (type === 'business') {
+      return {
+        id,
+        main: order?.item ?? 'Unmatched receipt',
+        expected: order
+          ? money(order.amount)
+          : 'NO INVOICE',
+        observed: payments.length
+          ? payments.map(p => money(p.amount)).join(' + ')
+          : 'UNPAID',
+      };
+    }
+
+    return {
+      id,
+      main:
+        `orders=${order ? 1 : 0} · captures=${payments.length}`,
+      expected: order
+        ? money(order.amount)
+        : 'NULL',
+      observed: payments.length
+        ? payments.map(p => money(p.amount)).join(' + ')
+        : 'NULL',
+    };
+  });
+
+  const columns = {
+    swe: [
+      'Order',
+      'Event trace',
+      'Expected payload',
+      'Captured payload',
+    ],
+    business: [
+      'Order',
+      'Invoice item',
+      'Amount due',
+      'Receipts',
+    ],
+    data_science: [
+      'Order',
+      'Feature vector',
+      'Expected value',
+      'Observed values',
+    ],
   }[type];
 
   return {
     ...CAREER_INFO[type],
-    side,
+    type,
     rows,
-    headers,
-    note: isA
-      ? 'You have the order-side evidence. Your partner has the payment-side evidence. Compare IDs and amounts together.'
-      : 'You have the payment-side evidence. Your partner has the order-side evidence. Compare IDs and amounts together.',
-    skill: {
-      swe: 'Event tracing & debugging',
-      business: 'Financial reconciliation',
-      data_science: 'Anomaly detection',
-    }[type],
+    columns,
   };
 }
