@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Panel from '../components/ui/Panel';
 import { supabase } from '../lib/supabase';
 import { usePlayer } from '../context/PlayerContext';
+
 import PostOfficeRush from '../games/postOfficeRush/PostOfficeRush';
 import DeadlockBakery from '../games/deadlockBakery/DeadlockBakery';
 import StakeholderSummit from '../games/stakeholderSummit/StakeholderSummit';
@@ -14,7 +16,10 @@ import FestivalForecast from '../games/festivalForecast/FestivalForecast';
 import PotionTrials from '../games/potionTrials/PotionTrials';
 
 const normalizeCareer = (id) =>
-  String(id ?? '').toLowerCase().replace(/[ -]/g, '_');
+  String(id ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[ -]/g, '_');
 
 function QuestPage() {
   const { questId } = useParams();
@@ -27,11 +32,14 @@ function QuestPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
+  // Prevent repeated completion requests while one is in progress.
+  const savingRef = useRef(false);
+
   const isYourCareer = Boolean(
     quest &&
-    player &&
-    normalizeCareer(quest.career) ===
-      normalizeCareer(player.career)
+      player &&
+      normalizeCareer(quest.career) ===
+        normalizeCareer(player.career)
   );
 
   useEffect(() => {
@@ -40,6 +48,7 @@ function QuestPage() {
     async function loadQuest() {
       setLoading(true);
       setError('');
+      setQuest(null);
       setCompleted(false);
       setMessage('');
 
@@ -73,6 +82,8 @@ function QuestPage() {
           .eq('quest_id', data.id)
           .maybeSingle();
 
+        if (!active) return;
+
         if (completionError) {
           console.error(
             'Completion lookup failed:',
@@ -80,7 +91,7 @@ function QuestPage() {
           );
         }
 
-        if (active && completion) {
+        if (completion) {
           setCompleted(true);
         }
       }
@@ -97,10 +108,19 @@ function QuestPage() {
     };
   }, [questId]);
 
-  // Called by a minigame's "Claim your XP" button after the player wins.
-  // It THROWS on failure so the minigame can show the error itself.
+  // Called when a player claims XP after winning a minigame.
   async function handleQuestComplete() {
-    if (!quest || completed || saving) return;
+    if (!quest) return;
+
+    // Already completed quests can be replayed without XP.
+    if (completed) {
+      setMessage(
+        'You already completed this quest. Enjoy replaying it!'
+      );
+      return;
+    }
+
+    if (savingRef.current || saving) return;
 
     if (!isYourCareer) {
       throw new Error(
@@ -108,6 +128,7 @@ function QuestPage() {
       );
     }
 
+    savingRef.current = true;
     setSaving(true);
     setError('');
     setMessage('');
@@ -128,20 +149,23 @@ function QuestPage() {
       setMessage(
         data?.awarded
           ? `Quest complete! +${data.xp_awarded} XP`
-          : 'Quest already completed.'
+          : 'Quest already completed. You can replay it anytime!'
       );
 
-      await refreshPlayer();
+      if (data?.awarded) {
+        await refreshPlayer();
 
-      window.dispatchEvent(
-        new Event('guildhaven:xp-updated')
-      );
+        window.dispatchEvent(
+          new Event('guildhaven:xp-updated')
+        );
+      }
     } catch (err) {
       throw new Error(
         err.message || 'Could not complete quest.',
         { cause: err }
       );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -149,23 +173,68 @@ function QuestPage() {
   function renderMinigame() {
     switch (Number(quest.id)) {
       case 1:
-        return <PostOfficeRush onComplete={handleQuestComplete} />;
+        return (
+          <PostOfficeRush
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 2:
-        return <DeadlockBakery onComplete={handleQuestComplete} />;
+        return (
+          <DeadlockBakery
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 3:
-        return <RoadPlanner onComplete={handleQuestComplete} />;
+        return (
+          <RoadPlanner
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 4:
-        return <StakeholderSummit onComplete={handleQuestComplete} />;
+        return (
+          <StakeholderSummit
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 5:
-        return <LedgerDetective onComplete={handleQuestComplete} />;
+        return (
+          <LedgerDetective
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 6:
-        return <FestivalForecast onComplete={handleQuestComplete} />;
+        return (
+          <FestivalForecast
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 7:
-        return <GradientGarden onComplete={handleQuestComplete} />;
+        return (
+          <GradientGarden
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 8:
-        return <QueryLibrary onComplete={handleQuestComplete} />;
+        return (
+          <QueryLibrary
+            onComplete={handleQuestComplete}
+          />
+        );
+
       case 9:
-        return <PotionTrials onComplete={handleQuestComplete} />;
+        return (
+          <PotionTrials
+            onComplete={handleQuestComplete}
+          />
+        );
+
       default:
         return (
           <div className="my-6 rounded-sm border-4 border-dashed border-wood p-8 text-center">
@@ -205,6 +274,7 @@ function QuestPage() {
     <Panel title={quest.title}>
       <p>{quest.description}</p>
 
+      {/* CAREER INFORMATION */}
       <div
         className={`my-4 rounded-sm border-2 p-4 ${
           isYourCareer
@@ -219,12 +289,14 @@ function QuestPage() {
         </p>
 
         <p className="mt-2">
-          {isYourCareer
-            ? 'Complete this quest to earn XP for your selected career.'
-            : "You can view this quest, but XP is only available on your selected career path."}
+          {completed
+            ? 'You have already earned XP for this quest. You can revisit and replay it whenever you like.'
+            : isYourCareer
+              ? 'Complete this quest to earn XP for your selected career.'
+              : 'You can view this quest, but XP is only available on your selected career path.'}
         </p>
 
-        {!isYourCareer && (
+        {!isYourCareer && !completed && (
           <Link
             to="/village"
             className="mt-2 inline-block underline"
@@ -234,12 +306,40 @@ function QuestPage() {
         )}
       </div>
 
+      {/* COMPLETED QUEST BANNER */}
       {completed && (
-        <p className="my-4 rounded-sm border-2 border-forest bg-sage/20 p-4 text-forest">
-          ✓ Quest already completed!
-        </p>
+        <div
+          className="
+            my-4
+            border-4
+            border-[#8CB99B]
+            bg-[#E3F3E7]
+            p-4
+            text-[#3E7652]
+          "
+          style={{
+            boxShadow: '4px 4px 0 #B7D9C1',
+          }}
+        >
+          <p className="font-display text-lg font-bold">
+            ✓ Quest Completed
+          </p>
+
+          <p className="mt-2 text-sm">
+            You have already completed this adventure!
+            Feel free to explore the challenge again,
+            experiment with different solutions,
+            or replay it for practice.
+          </p>
+
+          <p className="mt-2 text-sm font-bold">
+            XP has already been awarded.
+            Replaying will not award additional XP.
+          </p>
+        </div>
       )}
 
+      {/* ERRORS */}
       {error && (
         <p
           role="alert"
@@ -249,22 +349,44 @@ function QuestPage() {
         </p>
       )}
 
+      {/* COMPLETION MESSAGE */}
       {message && (
         <p
           role="status"
-          className="my-3 text-forest"
+          className="
+            my-3
+            rounded-sm
+            border-2
+            border-[#8CB99B]
+            bg-[#E3F3E7]
+            p-3
+            text-forest
+          "
         >
           {message}
         </p>
       )}
 
+      {/* ALWAYS RENDER THE MINIGAME */}
       <div className="my-6">
         {renderMinigame()}
       </div>
 
+      {/* RETURN TO QUEST BOARD */}
       <Link
         to="/quests"
-        className="underline"
+        className="
+          inline-block
+          rounded-sm
+          border-4
+          border-bark
+          bg-[#E9DFF8]
+          px-4 py-2
+          font-display
+          text-[#654B80]
+          transition-transform
+          hover:-translate-y-1
+        "
       >
         ← Back to Quest Board
       </Link>
