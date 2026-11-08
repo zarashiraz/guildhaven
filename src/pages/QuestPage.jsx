@@ -66,7 +66,7 @@ function QuestPage() {
         } = await supabase
           .from('quest_completions')
           .select('quest_id')
-          .eq('user_id', authData.user.id)
+          .eq('player_id', authData.user.id)
           .eq('quest_id', data.id)
           .maybeSingle();
 
