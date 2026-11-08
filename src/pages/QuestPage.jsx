@@ -3,14 +3,28 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Panel from '../components/ui/Panel';
 import { supabase } from '../lib/supabase';
+import { usePlayer } from '../context/PlayerContext';
+
+const normalizeCareer = (id) =>
+  String(id ?? '').toLowerCase().replace(/[ -]/g, '_');
 
 function QuestPage() {
   const { questId } = useParams();
+  const { player, refreshPlayer } = usePlayer();
 
   const [quest, setQuest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const isYourCareer = Boolean(
+    quest &&
+    player &&
+    normalizeCareer(quest.career) ===
+      normalizeCareer(player.career)
+  );
 
   useEffect(() => {
     let active = true;
@@ -19,6 +33,7 @@ function QuestPage() {
       setLoading(true);
       setError('');
       setCompleted(false);
+      setMessage('');
 
       const { data, error: questError } = await supabase
         .from('quests')
@@ -36,19 +51,25 @@ function QuestPage() {
 
       setQuest(data);
 
-      const { data: authData } = await supabase.auth.getUser();
+      const { data: authData } =
+        await supabase.auth.getUser();
 
       if (authData?.user) {
-        const { data: completion, error: completionError } =
-          await supabase
-            .from('quest_completions')
-            .select('quest_id')
-            .eq('user_id', authData.user.id)
-            .eq('quest_id', data.id)
-            .maybeSingle();
+        const {
+          data: completion,
+          error: completionError,
+        } = await supabase
+          .from('quest_completions')
+          .select('quest_id')
+          .eq('user_id', authData.user.id)
+          .eq('quest_id', data.id)
+          .maybeSingle();
 
         if (completionError) {
-          console.error('Completion lookup failed:', completionError);
+          console.error(
+            'Completion lookup failed:',
+            completionError
+          );
         }
 
         if (active && completion) {
@@ -56,7 +77,9 @@ function QuestPage() {
         }
       }
 
-      if (active) setLoading(false);
+      if (active) {
+        setLoading(false);
+      }
     }
 
     loadQuest();
@@ -67,59 +90,50 @@ function QuestPage() {
   }, [questId]);
 
   async function handleQuestComplete() {
-    if (!quest) {
-      throw new Error('Quest not loaded.');
-    }
+    if (!quest || completed || saving) return;
 
-    if (completed) return;
-
-    const { data: authData, error: authError } =
-      await supabase.auth.getUser();
-
-    if (authError || !authData?.user) {
-      throw new Error('Please sign in to save your progress.');
-    }
-
-    const userId = authData.user.id;
-
-    const { data: existing, error: checkError } =
-      await supabase
-        .from('quest_completions')
-        .select('quest_id')
-        .eq('user_id', userId)
-        .eq('quest_id', quest.id)
-        .maybeSingle();
-
-    if (checkError) {
-      throw new Error(checkError.message);
-    }
-
-    if (existing) {
-      setCompleted(true);
+    if (!isYourCareer) {
+      setMessage(
+        'Switch to this career in the Village to earn XP.'
+      );
       return;
     }
 
-    const { error: insertError } = await supabase
-      .from('quest_completions')
-      .insert({
-        user_id: userId,
-        quest_id: quest.id
-      });
+    setSaving(true);
+    setError('');
+    setMessage('');
 
-    if (insertError) {
-      if (insertError.code === '23505') {
-        setCompleted(true);
-        return;
-      }
+    try {
+      const { data, error: rpcError } =
+        await supabase.rpc(
+          'complete_career_quest',
+          {
+            p_quest_id: Number(quest.id),
+          }
+        );
 
-      throw new Error(insertError.message);
+      if (rpcError) throw rpcError;
+
+      setCompleted(true);
+
+      setMessage(
+        data?.awarded
+          ? `Quest complete! +${data.xp_awarded} XP`
+          : 'Quest already completed.'
+      );
+
+      await refreshPlayer();
+
+      window.dispatchEvent(
+        new Event('guildhaven:xp-updated')
+      );
+    } catch (err) {
+      setError(
+        err.message || 'Could not complete quest.'
+      );
+    } finally {
+      setSaving(false);
     }
-
-    setCompleted(true);
-
-    window.dispatchEvent(
-      new Event('guildhaven:xp-updated')
-    );
   }
 
   function renderMinigame() {
@@ -130,6 +144,7 @@ function QuestPage() {
             <h3 className="font-display text-xl text-forest">
               Quest Under Construction
             </h3>
+
             <p className="mt-3">
               This challenge is being prepared.
             </p>
@@ -146,10 +161,11 @@ function QuestPage() {
     );
   }
 
-  if (error || !quest) {
+  if (!quest) {
     return (
       <Panel title="Quest Not Found">
-        <p>{error}</p>
+        <p>{error || 'Quest not found.'}</p>
+
         <Link to="/quests" className="underline">
           ← Back to Quest Board
         </Link>
@@ -161,17 +177,71 @@ function QuestPage() {
     <Panel title={quest.title}>
       <p>{quest.description}</p>
 
+      <div
+        className={`my-4 rounded-sm border-2 p-4 ${
+          isYourCareer
+            ? 'border-forest bg-sage/20 text-forest'
+            : 'border-wood bg-parchment text-bark'
+        }`}
+      >
+        <p className="font-display text-sm">
+          {isYourCareer
+            ? '★ Your Career Path'
+            : 'Explore Another Career'}
+        </p>
+
+        <p className="mt-2">
+          {isYourCareer
+            ? 'Complete this quest to earn XP for your selected career.'
+            : "You can view this quest, but XP is only available on your selected career path."}
+        </p>
+
+        {!isYourCareer && (
+          <Link
+            to="/village"
+            className="mt-2 inline-block underline"
+          >
+            Switch Career Path →
+          </Link>
+        )}
+      </div>
+
       {completed && (
-        <div className="my-4 rounded-lg border-2 border-green-700 bg-green-50 p-4 text-green-800">
+        <p className="my-4 rounded-sm border-2 border-forest bg-sage/20 p-4 text-forest">
           ✓ Quest already completed!
-        </div>
+        </p>
+      )}
+
+      {error && (
+        <p
+          role="alert"
+          className="my-3 text-red-700"
+        >
+          {error}
+        </p>
+      )}
+
+      {message && (
+        <p
+          role="status"
+          className="my-3 text-forest"
+        >
+          {message}
+        </p>
       )}
 
       <div className="my-6">
         {renderMinigame()}
       </div>
 
-      <Link to="/quests" className="underline">
+      {/* When a real minigame is implemented,
+          call handleQuestComplete() only after
+          its success is verified. */}
+
+      <Link
+        to="/quests"
+        className="underline"
+      >
         ← Back to Quest Board
       </Link>
     </Panel>
