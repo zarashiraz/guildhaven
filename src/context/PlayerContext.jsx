@@ -10,14 +10,24 @@ import { supabase } from '../lib/supabase';
 const PlayerContext = createContext(null);
 
 const PROFILE_FIELDS =
-  'id, username, career, avatar, total_xp';
+  'id, username, career, avatar, total_xp, swe_xp, business_xp, data_science_xp';
+
+const normalizeCareer = (id) =>
+  String(id ?? '').toLowerCase().replace(/[ -]/g, '_');
+
+const xpField = (career) =>
+  ({
+    swe: 'swe_xp',
+    business: 'business_xp',
+    data_science: 'data_science_xp',
+  })[normalizeCareer(career)];
 
 function formatPlayer(profile) {
   if (!profile) return null;
 
   return {
     ...profile,
-    xp: profile.total_xp ?? 0,
+    xp: profile[xpField(profile.career)] ?? 0,
   };
 }
 
@@ -26,13 +36,14 @@ export function PlayerProvider({ children }) {
   const [player, setPlayer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState('');
+  const [switchingCareer, setSwitchingCareer] = useState(false);
 
   useEffect(() => {
     let active = true;
     let requestId = 0;
 
     async function loadProfile(authUser) {
-      const currentRequest = ++requestId;
+      const id = ++requestId;
 
       if (!active) return;
 
@@ -52,9 +63,7 @@ export function PlayerProvider({ children }) {
         .eq('id', authUser.id)
         .maybeSingle();
 
-      if (!active || currentRequest !== requestId) {
-        return;
-      }
+      if (!active || id !== requestId) return;
 
       if (error) {
         console.error('Profile loading error:', error);
@@ -67,7 +76,6 @@ export function PlayerProvider({ children }) {
       setLoading(false);
     }
 
-    // Restore existing Supabase session.
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
 
@@ -78,18 +86,14 @@ export function PlayerProvider({ children }) {
       loadProfile(data?.session?.user ?? null);
     });
 
-    // Respond to sign in and sign out.
     const { data: listener } =
       supabase.auth.onAuthStateChange((event, session) => {
         if (
-          event !== 'SIGNED_IN' &&
-          event !== 'SIGNED_OUT' &&
-          event !== 'USER_UPDATED'
+          !['SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(event)
         ) {
           return;
         }
 
-        // Run database queries outside the auth callback.
         setTimeout(() => {
           if (active) {
             loadProfile(session?.user ?? null);
@@ -104,26 +108,19 @@ export function PlayerProvider({ children }) {
     };
   }, []);
 
-  async function createCharacter({
-    username,
-    career,
-    avatar,
-  }) {
+  async function createCharacter({ username, career, avatar }) {
     if (!user) {
       throw new Error('Please sign in first.');
     }
 
-    const cleanUsername = username.trim();
-
-    if (!cleanUsername) {
+    if (!username?.trim()) {
       throw new Error('Please enter a character name.');
     }
 
-    if (!career) {
-      throw new Error('Please choose a career path.');
+    if (!xpField(career)) {
+      throw new Error('Please choose a valid career path.');
     }
 
-    // Do not overwrite an existing character or reset XP.
     const { data: existing, error: checkError } =
       await supabase
         .from('profiles')
@@ -134,16 +131,16 @@ export function PlayerProvider({ children }) {
     if (checkError) throw checkError;
 
     if (existing) {
-      const existingPlayer = formatPlayer(existing);
-      setPlayer(existingPlayer);
-      return existingPlayer;
+      const result = formatPlayer(existing);
+      setPlayer(result);
+      return result;
     }
 
     const { data, error } = await supabase
       .from('profiles')
       .insert({
         id: user.id,
-        username: cleanUsername,
+        username: username.trim(),
         career,
         avatar,
         total_xp: 0,
@@ -153,11 +150,10 @@ export function PlayerProvider({ children }) {
 
     if (error) throw error;
 
-    const newPlayer = formatPlayer(data);
+    const result = formatPlayer(data);
+    setPlayer(result);
 
-    setPlayer(newPlayer);
-
-    return newPlayer;
+    return result;
   }
 
   async function refreshPlayer() {
@@ -171,10 +167,39 @@ export function PlayerProvider({ children }) {
 
     if (error) throw error;
 
-    const updatedPlayer = formatPlayer(data);
-    setPlayer(updatedPlayer);
+    const result = formatPlayer(data);
+    setPlayer(result);
 
-    return updatedPlayer;
+    return result;
+  }
+
+  async function switchCareer(newCareer) {
+    if (!user || !player) {
+      throw new Error('Please sign in first.');
+    }
+
+    if (!xpField(newCareer)) {
+      throw new Error('Invalid career path.');
+    }
+
+    if (newCareer === player.career) {
+      return player;
+    }
+
+    setSwitchingCareer(true);
+
+    try {
+      const { error } = await supabase.rpc(
+        'switch_career_path',
+        { p_career: newCareer }
+      );
+
+      if (error) throw error;
+
+      return await refreshPlayer();
+    } finally {
+      setSwitchingCareer(false);
+    }
   }
 
   async function logout() {
@@ -194,7 +219,9 @@ export function PlayerProvider({ children }) {
         player,
         loading,
         profileError,
+        switchingCareer,
         createCharacter,
+        switchCareer,
         refreshPlayer,
         logout,
       }}
