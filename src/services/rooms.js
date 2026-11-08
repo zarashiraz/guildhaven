@@ -1,16 +1,14 @@
+
 import { supabase } from '../lib/supabase';
 
-// The Guild Hall runs on Supabase Realtime. No database tables are needed:
-//   Presence  = who is in the room and where they are standing
-//   Broadcast = chat messages
+// Presence = players and positions
+// Broadcast = chat messages
+// No database publication changes needed.
 const ROOM_NAME = 'guild-hall';
 
-// player: { id, username, avatar, career }, tabId: any short unique string, start: { x, y }
-// handlers: { onPlayers(list), onChat(message), onStatus(text) }
-// Returns { key, move(x, y), say(text), leave() }
-// Supabase reconnects and rejoins the channel by itself, so we just let it.
 export function joinTavern(player, tabId, start, handlers) {
   const key = `${player.id}:${tabId}`;
+
   let me = {
     uid: player.id,
     username: player.username,
@@ -20,51 +18,102 @@ export function joinTavern(player, tabId, start, handlers) {
     y: start.y,
   };
 
+  let left = false;
+  let subscribed = false;
+
   const channel = supabase.channel(ROOM_NAME, {
-    config: { presence: { key }, broadcast: { self: true } },
+    config: {
+      presence: { key },
+      broadcast: { self: true },
+    },
   });
 
   channel
     .on('presence', { event: 'sync' }, () => {
+      if (left) return;
+
       const state = channel.presenceState();
-      const list = Object.entries(state).map(([k, metas]) => ({
-        key: k,
-        ...metas[metas.length - 1],
-      }));
-      handlers.onPlayers(list);
+
+      const players = Object.entries(state).flatMap(
+        ([presenceKey, metas]) =>
+          metas.length
+            ? [{
+                ...metas[metas.length - 1],
+                key: presenceKey,
+              }]
+            : []
+      );
+
+      handlers.onPlayers(players);
     })
-    .on('broadcast', { event: 'chat' }, ({ payload }) => handlers.onChat(payload))
-    .subscribe(async (status, err) => {
-      // Open the browser console (F12) to see why a connection drops.
-      console.log('[guild hall]', status, err ?? '');
+    .on('broadcast', { event: 'chat' }, ({ payload }) => {
+      if (!left) {
+        handlers.onChat(payload);
+      }
+    })
+    .subscribe(async (status, error) => {
+      if (left) return;
+
+      console.log('[Guild Hall Realtime]', status, error ?? '');
+
       handlers.onStatus(status);
+
       if (status === 'SUBSCRIBED') {
-        await channel.track(me);
+        subscribed = true;
+
+        try {
+          await channel.track(me);
+        } catch (err) {
+          console.error('Failed to track player:', err);
+        }
+      } else {
+        subscribed = false;
+        handlers.onPlayers([]);
       }
     });
 
   return {
     key,
+
     move(x, y) {
       me = { ...me, x, y };
-      if (channel.state === 'joined') channel.track(me);
+
+      if (subscribed) {
+        channel.track(me).catch((err) => {
+          console.error('Player movement sync failed:', err);
+        });
+      }
     },
-    say(text) {
-      if (channel.state !== 'joined') return;
-      channel.send({
-        type: 'broadcast',
-        event: 'chat',
-        payload: {
-          key,
-          username: me.username,
-          avatar: me.avatar,
-          text,
-          at: Date.now(),
-        },
-      });
+
+    async say(text) {
+      if (!subscribed) return;
+
+      try {
+        await channel.send({
+          type: 'broadcast',
+          event: 'chat',
+          payload: {
+            key,
+            username: me.username,
+            avatar: me.avatar,
+            text,
+            at: Date.now(),
+          },
+        });
+      } catch (err) {
+        console.error('Chat send failed:', err);
+      }
     },
+
     leave() {
-      supabase.removeChannel(channel);
+      if (left) return;
+
+      left = true;
+      subscribed = false;
+
+      supabase.removeChannel(channel).catch((err) => {
+        console.error('Failed to leave Guild Hall:', err);
+      });
     },
   };
 }
