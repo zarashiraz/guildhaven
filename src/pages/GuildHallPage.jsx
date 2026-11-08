@@ -3,7 +3,7 @@ import Panel from '../components/ui/Panel';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
 import TavernScene from '../components/guild/TavernScene';
-import { isWalkable, randomSpawn } from '../components/guild/tavernMap';
+import { findPath, isWalkable, randomSpawn } from '../components/guild/tavernMap';
 import { usePlayer } from '../context/PlayerContext';
 import { joinTavern } from '../services/rooms';
 
@@ -46,6 +46,8 @@ function GuildHallPage() {
   const [notice, setNotice] = useState('');
   const tavern = useRef(null);
   const startPos = useRef(pos);
+  const posRef = useRef(pos);
+  const walkTimer = useRef(null);
   const logRef = useRef(null);
 
   useEffect(() => {
@@ -86,15 +88,53 @@ function GuildHallPage() {
     };
   }, [playerId, playerName, playerAvatar, playerCareer, tabId]);
 
+  // Stop any walk in progress when leaving the page
+  useEffect(() => {
+    const timers = walkTimer;
+    return () => clearInterval(timers.current);
+  }, []);
+
   // Keep the chat scrolled to the newest message
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [messages, chatOpen]);
 
-  function moveTo(x, y) {
-    if (!isWalkable(x, y)) return;
+  // Put the player on a tile and tell everyone else
+  function setPosition(x, y) {
+    posRef.current = { x, y };
     setPos({ x, y });
     if (tavern.current) tavern.current.move(x, y);
+  }
+
+  function stopWalking() {
+    clearInterval(walkTimer.current);
+    walkTimer.current = null;
+  }
+
+  // Click the floor: walk there one tile at a time, going around the furniture
+  function walkTo(x, y) {
+    stopWalking();
+    const path = findPath(posRef.current, { x, y });
+    if (!path || path.length === 0) return;
+    let i = 0;
+    setPosition(path[i].x, path[i].y);
+    i += 1;
+    walkTimer.current = setInterval(() => {
+      if (i >= path.length) {
+        stopWalking();
+        return;
+      }
+      setPosition(path[i].x, path[i].y);
+      i += 1;
+    }, 190);
+  }
+
+  // Arrow keys: one tile
+  function stepBy(dx, dy) {
+    stopWalking();
+    const nx = posRef.current.x + dx;
+    const ny = posRef.current.y + dy;
+    if (isWalkable(nx, ny)) setPosition(nx, ny);
   }
 
   function sendMessage(e) {
@@ -138,8 +178,8 @@ function GuildHallPage() {
           <TavernScene
             players={everyone}
             bubbles={bubbles}
-            onTile={moveTo}
-            onStep={(dx, dy) => moveTo(pos.x + dx, pos.y + dy)}
+            onTile={walkTo}
+            onStep={stepBy}
             onQuestTable={() =>
               setNotice('Duo quests are opening soon. Sit here with a friend to take on a quest together.')
             }

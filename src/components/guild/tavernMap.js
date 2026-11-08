@@ -35,6 +35,34 @@ export function isWalkable(x, y) {
   return !BLOCKED.some(([bx, by, bw, bh]) => x >= bx && x < bx + bw && y >= by && y < by + bh);
 }
 
+// Shortest walk between two tiles that goes around furniture.
+// Returns the tiles to step on (not including where you start), or null if there is no way.
+export function findPath(from, to) {
+  if (!isWalkable(to.x, to.y)) return null;
+  const id = (x, y) => y * COLS + x;
+  const prev = new Map([[id(from.x, from.y), null]]);
+  const queue = [[from.x, from.y]];
+  while (queue.length) {
+    const [x, y] = queue.shift();
+    if (x === to.x && y === to.y) break;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!isWalkable(nx, ny) || prev.has(id(nx, ny))) continue;
+      prev.set(id(nx, ny), [x, y]);
+      queue.push([nx, ny]);
+    }
+  }
+  if (!prev.has(id(to.x, to.y))) return null;
+  const path = [];
+  let cur = [to.x, to.y];
+  while (cur && !(cur[0] === from.x && cur[1] === from.y)) {
+    path.unshift({ x: cur[0], y: cur[1] });
+    cur = prev.get(id(cur[0], cur[1]));
+  }
+  return path;
+}
+
 export function randomSpawn() {
   const spots = [[8, 9], [9, 9], [10, 9], [9, 10], [10, 10], [8, 10], [9, 7], [10, 7]];
   return spots[Math.floor(Math.random() * spots.length)];
