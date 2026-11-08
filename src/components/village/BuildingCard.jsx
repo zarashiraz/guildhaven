@@ -2,8 +2,8 @@ import { Link } from 'react-router-dom';
 
 const roofColors = {
   swe: 'fill-forest',
-  uxui: 'fill-dusk',
   business: 'fill-gold',
+  'data-science': 'fill-dusk',
 };
 
 const roofRows = [[6, 2, 4], [5, 3, 6], [4, 4, 8], [3, 5, 10], [2, 6, 12]];
