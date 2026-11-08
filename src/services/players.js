@@ -1,13 +1,5 @@
 import { supabase } from '../lib/supabase';
 
-export async function signInGuest() {
-  const { data, error } = await supabase.auth.signInAnonymously();
-
-  if (error) throw error;
-
-  return data.user;
-}
-
 export async function getSkills() {
   const { data, error } = await supabase
     .from('skills')
