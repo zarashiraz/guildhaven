@@ -4,9 +4,6 @@ import { useParams, Link } from 'react-router-dom';
 import Panel from '../components/ui/Panel';
 import { supabase } from '../lib/supabase';
 
-import BrokenRobot from '../components/BrokenRobot';
-import BrokenAPI from '../components/BrokenAPI';
-
 function QuestPage() {
   const { questId } = useParams();
 
@@ -127,20 +124,6 @@ function QuestPage() {
 
   function renderMinigame() {
     switch (Number(quest.id)) {
-      case 1:
-        return (
-          <BrokenRobot
-            onComplete={handleQuestComplete}
-          />
-        );
-
-      case 4:
-        return (
-          <BrokenAPI
-            onComplete={handleQuestComplete}
-          />
-        );
-
       default:
         return (
           <div className="my-6 rounded-sm border-4 border-dashed border-wood p-8 text-center">

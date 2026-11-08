@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -8,6 +7,7 @@ import Avatar from '../components/ui/Avatar';
 
 import { usePlayer } from '../context/PlayerContext';
 import { careers } from '../data/mockData';
+import TulipIcon from '../components/ui/TulipIcon';
 
 const avatarOptions = [
   'avatar-1',
@@ -83,8 +83,9 @@ function CharacterCreationPage() {
   if (player) {
     return (
       <main className="mx-auto max-w-3xl p-8">
-        <h1 className="font-display text-5xl font-bold text-forest">
+        <h1 className="flex items-center gap-3 font-display text-5xl font-bold text-forest">
           Guildhaven
+          <TulipIcon className="h-12 w-9" />
         </h1>
 
         <p className="mb-6 mt-2">
@@ -121,8 +122,9 @@ function CharacterCreationPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-8">
-      <h1 className="font-display text-5xl font-bold text-forest">
+      <h1 className="flex items-center gap-3 font-display text-5xl font-bold text-forest">
         Guildhaven
+        <TulipIcon className="h-12 w-9" />
       </h1>
 
       <p className="mb-6 mt-2">
