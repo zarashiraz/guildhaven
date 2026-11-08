@@ -1,14 +1,11 @@
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Panel from '../components/ui/Panel';
 import PlayerHUD from '../components/village/PlayerHUD';
 import BuildingCard from '../components/village/BuildingCard';
 import { usePlayer } from '../context/PlayerContext';
-import {
-  careers,
-  mockQuests,
-  mockCompletedQuests,
-} from '../data/mockData';
+import { supabase } from '../lib/supabase';
+import { careers, mockQuests } from '../data/mockData';
 
 const normalizeCareer = (id) =>
   String(id ?? '').toLowerCase().replace(/[ -]/g, '_');
@@ -31,6 +28,85 @@ function VillagePage() {
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
 
+  const [doneIds, setDoneIds] = useState([]);
+  const [loadingQuests, setLoadingQuests] = useState(true);
+  const [questError, setQuestError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCompletedQuests() {
+      try {
+        setQuestError('');
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) throw authError;
+
+        if (!user) {
+          if (active) setDoneIds([]);
+          return;
+        }
+
+        const { data, error: completionError } = await supabase
+          .from('quest_completions')
+          .select('quest_id')
+          .eq('player_id', user.id);
+
+        if (completionError) throw completionError;
+
+        if (active) {
+          setDoneIds(
+            (data || []).map((row) => Number(row.quest_id))
+          );
+        }
+      } catch (err) {
+        if (active) {
+          setQuestError(
+            err.message || 'Could not load quest progress.'
+          );
+        }
+      } finally {
+        if (active) setLoadingQuests(false);
+      }
+    }
+
+    loadCompletedQuests();
+
+    // Refresh progress when returning to the Village.
+    function refreshProgress() {
+      if (document.visibilityState === 'visible') {
+        loadCompletedQuests();
+      }
+    }
+
+    window.addEventListener('focus', loadCompletedQuests);
+    document.addEventListener(
+      'visibilitychange',
+      refreshProgress
+    );
+    window.addEventListener(
+      'guildhaven:xp-updated',
+      loadCompletedQuests
+    );
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', loadCompletedQuests);
+      document.removeEventListener(
+        'visibilitychange',
+        refreshProgress
+      );
+      window.removeEventListener(
+        'guildhaven:xp-updated',
+        loadCompletedQuests
+      );
+    };
+  }, [player?.id]);
+
   if (!player) return null;
 
   const career = careers.find(
@@ -38,9 +114,7 @@ function VillagePage() {
       normalizeCareer(c.id) === normalizeCareer(player.career)
   );
 
-  const doneIds = mockCompletedQuests.map(
-    (q) => q.quest_id
-  );
+  const completedSet = new Set(doneIds);
 
   function openPicker() {
     setSelected(player.career);
@@ -62,7 +136,6 @@ function VillagePage() {
     <div className="space-y-6">
       <h1 className="sr-only">Village</h1>
 
-      {/* Existing XP bar remains at the top */}
       <PlayerHUD
         player={player}
         careerName={career?.name}
@@ -152,6 +225,24 @@ function VillagePage() {
       )}
 
       <Panel title="The Village">
+        {questError && (
+          <p
+            role="alert"
+            className="mb-4 border-l-4 border-red-400 bg-red-50 p-3 text-sm text-red-700"
+          >
+            {questError}
+          </p>
+        )}
+
+        {loadingQuests && (
+          <p
+            role="status"
+            className="mb-4 text-sm text-bark"
+          >
+            Checking your quest journal...
+          </p>
+        )}
+
         <div className="grid gap-6 rounded-sm bg-sage/30 p-6 sm:grid-cols-3">
           {careers.map((c) => {
             const quests = mockQuests.filter(
@@ -161,7 +252,7 @@ function VillagePage() {
             );
 
             const done = quests.filter(
-              (q) => doneIds.includes(q.id)
+              (q) => completedSet.has(Number(q.id))
             ).length;
 
             return (
