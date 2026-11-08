@@ -107,11 +107,13 @@ function GuildHallPage() {
     }
   }, [messages, chatOpen]);
 
-  // Put the player on a tile and tell everyone else
-  function setPosition(x, y) {
+  // Put the player on a tile. mode: 'skip' = don't tell others, 'send' = tell others (limited
+  // to a few per second), 'force' = tell others right now.
+  function setPosition(x, y, mode = 'send') {
     posRef.current = { x, y };
     setPos({ x, y });
-    if (tavern.current) tavern.current.move(x, y);
+    if (!tavern.current || mode === 'skip') return;
+    tavern.current.move(x, y, mode === 'force');
   }
 
   function stopWalking() {
@@ -119,20 +121,32 @@ function GuildHallPage() {
     walkTimer.current = null;
   }
 
-  // Click the floor: walk there one tile at a time, going around the furniture
+  // Click the floor: walk there one tile at a time, going around the furniture.
+  // Others are only told about turns and the arrival. They walk the straight bits themselves.
   function walkTo(x, y) {
     stopWalking();
-    const path = findPath(posRef.current, { x, y });
+    const origin = { ...posRef.current };
+    const path = findPath(origin, { x, y });
     if (!path || path.length === 0) return;
+
+    const modeAt = (i) => {
+      if (i === path.length - 1) return 'force';
+      const before = i === 0 ? origin : path[i - 1];
+      const turns =
+        path[i].x - before.x !== path[i + 1].x - path[i].x ||
+        path[i].y - before.y !== path[i + 1].y - path[i].y;
+      return turns ? 'force' : 'skip';
+    };
+
     let i = 0;
-    setPosition(path[i].x, path[i].y);
+    setPosition(path[i].x, path[i].y, modeAt(i));
     i += 1;
     walkTimer.current = setInterval(() => {
       if (i >= path.length) {
         stopWalking();
         return;
       }
-      setPosition(path[i].x, path[i].y);
+      setPosition(path[i].x, path[i].y, modeAt(i));
       i += 1;
     }, 190);
   }
@@ -185,10 +199,9 @@ function GuildHallPage() {
       <div className="grid items-start gap-4 lg:grid-cols-[auto_13rem] lg:justify-center">
         {/* The tavern, sized to fit the screen, with the chat floating in the corner */}
         <div
-          className="relative mx-auto w-full lg:mx-0"
+          className="relative mx-auto w-full max-w-3xl lg:mx-0 lg:w-[var(--hall-width)] lg:max-w-none"
           style={{
-            maxWidth: '100%',
-            width: 'min(calc((100vh - 15rem) * 1.6667), max(20rem, calc(100vw - 24rem)))',
+            '--hall-width': 'min(calc((100vh - 15rem) * 1.6667), max(20rem, calc(100vw - 24rem)))',
           }}
         >
           <TavernScene
@@ -219,10 +232,10 @@ function GuildHallPage() {
             </div>
           )}
 
-          {/* Chat floats over the top-left corner */}
+          {/* Chat sits under the map on small windows and floats over the top-left corner on big ones */}
           <section
             aria-label="Guild chat"
-            className="absolute left-3 top-3 w-[min(17rem,60%)]"
+            className="mt-2 w-full lg:absolute lg:left-3 lg:top-3 lg:mt-0 lg:w-[min(17rem,60%)]"
           >
             <button
               type="button"

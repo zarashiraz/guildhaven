@@ -49,6 +49,32 @@ export function joinTavern(player, tabId, start, handlers) {
   let joined = false;
   let watchdog = null;
   let attempts = 0;
+  let lastSent = 0;
+  let sendTimer = null;
+  let lastPresence = []; // who is in the room, from presence
+  const positions = new Map(); // key -> { x, y }, from movement messages
+
+  // Movement goes through broadcast messages, NOT presence. Presence has a very low
+  // limit on this project and Supabase closes the room if it is exceeded.
+  function sendPosition() {
+    sendTimer = null;
+    lastSent = Date.now();
+    if (joined && channel) {
+      channel
+        .send({ type: 'broadcast', event: 'move', payload: { key, x: me.x, y: me.y } })
+        .catch((err) => console.error('Player movement sync failed:', err));
+    }
+  }
+
+  // Combine "who is here" (presence) with "where they stand" (movement messages)
+  function publishPlayers() {
+    handlers.onPlayers(
+      lastPresence.map((p) => {
+        const at = positions.get(p.key);
+        return at ? { ...p, x: at.x, y: at.y } : p;
+      })
+    );
+  }
 
   function connect() {
     closing.then(open);
@@ -65,15 +91,33 @@ export function joinTavern(player, tabId, start, handlers) {
     });
     channel = ch;
 
+    // If Supabase ever closes the room on purpose, this prints the reason.
+    ch.on('system', {}, (payload) => {
+      if (payload?.status === 'error') console.log(stamp(), '[Guild Hall] server says:', payload.message);
+    });
+
     ch.on('presence', { event: 'sync' }, () => {
       if (left || channel !== ch) return;
 
       const state = ch.presenceState();
-      const players = Object.entries(state).flatMap(([presenceKey, metas]) =>
+      lastPresence = Object.entries(state).flatMap(([presenceKey, metas]) =>
         metas.length ? [{ ...metas[metas.length - 1], key: presenceKey }] : []
       );
-      handlers.onPlayers(players);
+      // Forget positions of people who left
+      const here = new Set(lastPresence.map((p) => p.key));
+      for (const k of positions.keys()) if (!here.has(k)) positions.delete(k);
+      publishPlayers();
     })
+      // Someone new arrived: tell them where we are standing
+      .on('presence', { event: 'join' }, ({ key: joinedKey }) => {
+        if (left || channel !== ch || joinedKey === key) return;
+        sendPosition();
+      })
+      .on('broadcast', { event: 'move' }, ({ payload }) => {
+        if (left || channel !== ch || !payload || payload.key === key) return;
+        positions.set(payload.key, { x: payload.x, y: payload.y });
+        publishPlayers();
+      })
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
         if (!left && channel === ch) handlers.onChat(payload);
       })
@@ -93,6 +137,7 @@ export function joinTavern(player, tabId, start, handlers) {
           } catch (err) {
             console.error('Failed to track player:', err);
           }
+          sendPosition();
         } else {
           joined = false;
           startWatchdog();
@@ -121,7 +166,7 @@ export function joinTavern(player, tabId, start, handlers) {
   function wake() {
     if (left || document.visibilityState === 'hidden') return;
     if (joined && channel) {
-      channel.track(me).catch(() => {});
+      sendPosition();
     } else {
       clearTimeout(watchdog);
       watchdog = null;
@@ -132,18 +177,26 @@ export function joinTavern(player, tabId, start, handlers) {
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('online', wake);
 
+  // Every few seconds, repeat where we are standing (covers anyone who missed a message)
+  const heartbeat = setInterval(() => {
+    if (joined && channel) sendPosition();
+  }, 4000);
+
   connect();
 
   return {
     key,
 
-    move(x, y) {
+    // force = send right now (turns and arrivals). Otherwise it is limited to ~4 per second.
+    move(x, y, force = false) {
       me = { ...me, x, y };
-      if (joined && channel) {
-        channel.track(me).catch((err) => {
-          console.error('Player movement sync failed:', err);
-        });
+      if (force) {
+        clearTimeout(sendTimer);
+        sendPosition();
+        return;
       }
+      if (sendTimer) return;
+      sendTimer = setTimeout(sendPosition, Math.max(0, 250 - (Date.now() - lastSent)));
     },
 
     async say(text) {
@@ -164,6 +217,8 @@ export function joinTavern(player, tabId, start, handlers) {
       left = true;
       joined = false;
       clearTimeout(watchdog);
+      clearTimeout(sendTimer);
+      clearInterval(heartbeat);
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('online', wake);
       const old = channel;
