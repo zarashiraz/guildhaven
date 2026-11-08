@@ -1,10 +1,11 @@
-
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Panel from '../components/ui/Panel';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
 import TavernScene from '../components/guild/TavernScene';
-import { findPath, isWalkable, randomSpawn } from '../components/guild/tavernMap';
+import DuoQuest from '../components/guild/DuoQuest';
+import { COLS, DUO_SEATS, ROWS, findPath, isDuoSeat, isWalkable, randomSpawn } from '../components/guild/tavernMap';
+import { cancelOffer, emptyPair, prune, receive, sendOffer } from '../components/guild/pairing';
 import { usePlayer } from '../context/PlayerContext';
 import { joinTavern } from '../services/rooms';
 
@@ -45,19 +46,41 @@ function GuildHallPage() {
   const [chatOpen, setChatOpen] = useState(true);
   const [chatNote, setChatNote] = useState('');
   const [notice, setNotice] = useState('');
+  const [pair, setPair] = useState(emptyPair);
+  const [tick, setTick] = useState(0);
+  const [duo, setDuo] = useState(null); // set while you are in a quest room
   const tavern = useRef(null);
-  const startPos = useRef(pos);
+  const pairRef = useRef(pair);
   const posRef = useRef(pos);
   const walkTimer = useRef(null);
   const logRef = useRef(null);
 
+  const myKey = playerId ? `${playerId}:${tabId}` : 'me';
+
+  const commitPair = useCallback((next) => {
+    pairRef.current = next;
+    setPair(next);
+  }, []);
+
+  // Both of you said yes: move into the private quest room
+  const beginDuo = useCallback(
+    (me, partner) => {
+      clearInterval(walkTimer.current);
+      walkTimer.current = null;
+      commitPair(emptyPair());
+      setDuo({ me, partner });
+    },
+    [commitPair]
+  );
+
   useEffect(() => {
-    if (!playerId) return undefined;
+    if (!playerId || duo) return undefined;
 
     // Wait one tick before joining. In development React runs effects twice, and
     // joining and leaving the same channel instantly can leave it broken.
     let room = null;
     const timer = setTimeout(() => {
+      const self = { key: myKey, username: playerName, avatar: playerAvatar };
       room = joinTavern(
         {
           id: playerId,
@@ -66,7 +89,7 @@ function GuildHallPage() {
           career: playerCareer,
         },
         tabId,
-        startPos.current,
+        { ...posRef.current },
         {
           onPlayers: setOthers,
           onStatus: setStatus,
@@ -82,6 +105,13 @@ function GuildHallPage() {
               });
             }, 6000);
           },
+          onPair: (msg) => {
+            const { state, matched } = receive(pairRef.current, msg, myKey, Date.now());
+            commitPair(state);
+            if (matched) {
+              beginDuo(self, { key: matched, username: msg.name, avatar: msg.avatar });
+            }
+          },
         },
       );
       tavern.current = room;
@@ -92,7 +122,29 @@ function GuildHallPage() {
       if (room) room.leave();
       tavern.current = null;
     };
-  }, [playerId, playerName, playerAvatar, playerCareer, tabId]);
+  }, [playerId, playerName, playerAvatar, playerCareer, tabId, myKey, duo, commitPair, beginDuo]);
+
+  // Who is sitting at the Quest Table right now
+  const iAmSeated = isDuoSeat(pos.x, pos.y);
+  const seatedKeys = others
+    .filter((o) => o.key !== myKey && isDuoSeat(o.x, o.y))
+    .map((o) => o.key)
+    .join('|');
+
+  // Drop offers when someone stands up, or when an offer gets old
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const seated = new Set(seatedKeys ? seatedKeys.split('|') : []);
+    const { state, cancelled } = prune(pairRef.current, seated, iAmSeated, Date.now());
+    if (state !== pairRef.current) commitPair(state);
+    if (cancelled && tavern.current) {
+      tavern.current.pair({ kind: 'cancel', from: myKey, to: cancelled });
+    }
+  }, [seatedKeys, iAmSeated, tick, myKey, commitPair]);
 
   // Stop any walk in progress when leaving the page
   useEffect(() => {
@@ -159,6 +211,52 @@ function GuildHallPage() {
     if (isWalkable(nx, ny)) setPosition(nx, ny);
   }
 
+  // Click the quest table: walk to the closest stool nobody is sitting on
+  function sitAtQuestTable() {
+    const taken = new Set(others.filter((o) => o.key !== myKey).map((o) => `${o.x},${o.y}`));
+    const here = posRef.current;
+    if (isDuoSeat(here.x, here.y)) return;
+    let best = null;
+    for (const [sx, sy] of DUO_SEATS) {
+      if (taken.has(`${sx},${sy}`)) continue;
+      const path = findPath(here, { x: sx, y: sy });
+      if (path && (!best || path.length < best.length)) best = path;
+    }
+    if (!best) {
+      setNotice('All the seats at the Quest Table are taken right now.');
+      return;
+    }
+    setNotice('');
+    const goal = best[best.length - 1];
+    walkTo(goal.x, goal.y);
+  }
+
+  function requestPair(other) {
+    if (!tavern.current || pairRef.current.outgoing) return;
+    const { state, matched } = sendOffer(pairRef.current, other.key);
+    commitPair(state);
+    tavern.current.pair({
+      kind: 'offer',
+      from: myKey,
+      to: other.key,
+      name: playerName,
+      avatar: playerAvatar,
+    });
+    if (matched) {
+      beginDuo(
+        { key: myKey, username: playerName, avatar: playerAvatar },
+        { key: other.key, username: other.username, avatar: other.avatar }
+      );
+    }
+  }
+
+  function cancelPair() {
+    const to = pairRef.current.outgoing;
+    if (!to) return;
+    if (tavern.current) tavern.current.pair({ kind: 'cancel', from: myKey, to });
+    commitPair(cancelOffer(pairRef.current));
+  }
+
   function sendMessage(e) {
     e.preventDefault();
     const clean = text.trim().slice(0, 140);
@@ -172,7 +270,6 @@ function GuildHallPage() {
     setText('');
   }
 
-  const myKey = playerId ? `${playerId}:${tabId}` : 'me';
   const everyone = others
     .filter((o) => o.key !== myKey)
     .map((o) => ({ ...o, isSelf: false }));
@@ -187,12 +284,23 @@ function GuildHallPage() {
     isSelf: true,
   });
 
+  const takenSeats = new Set(others.filter((o) => o.key !== myKey).map((o) => `${o.x},${o.y}`));
+  const seatedOthers = everyone.filter((p) => !p.isSelf && isDuoSeat(p.x, p.y));
+
   const shownStatus = STATUS[status] ?? {
     text: status,
     dot: 'bg-gold',
   };
 
   const recent = messages.slice(-30);
+
+  if (duo) {
+    return (
+      <Panel title="Guild Hall">
+        <DuoQuest me={duo.me} partner={duo.partner} onExit={() => setDuo(null)} />
+      </Panel>
+    );
+  }
 
   return (
     <Panel title="Guild Hall">
@@ -204,33 +312,102 @@ function GuildHallPage() {
             '--hall-width': 'min(calc((100vh - 15rem) * 1.6667), max(20rem, calc(100vw - 24rem)))',
           }}
         >
-          <TavernScene
-            players={everyone}
-            bubbles={bubbles}
-            onTile={walkTo}
-            onStep={stepBy}
-            onQuestTable={() =>
-              setNotice(
-                'Duo quests are opening soon. Sit here with a friend to take on a quest together.'
-              )
-            }
-          />
+          <div className="relative">
+            <TavernScene
+              players={everyone}
+              bubbles={bubbles}
+              onTile={walkTo}
+              onStep={stepBy}
+              onQuestTable={sitAtQuestTable}
+            />
 
-          {notice && (
-            <div
-              role="status"
-              className="absolute bottom-3 left-1/2 w-[min(22rem,80%)] -translate-x-1/2 rounded-sm border-4 border-gold bg-parchment p-2 text-center shadow-[3px_3px_0_0_var(--color-bark)]"
-            >
-              <p>{notice}</p>
-              <button
-                type="button"
-                onClick={() => setNotice('')}
-                className="mt-1 underline"
-              >
-                Got it
-              </button>
+            {/* Glowing markers on the free Quest Table stools. Click one to sit. */}
+            <div className="pointer-events-none absolute inset-1">
+              {!iAmSeated &&
+                DUO_SEATS.filter(([sx, sy]) => !takenSeats.has(`${sx},${sy}`)).map(([sx, sy]) => (
+                  <button
+                    key={`${sx}-${sy}`}
+                    type="button"
+                    aria-label="Sit here to look for a quest partner"
+                    onClick={() => walkTo(sx, sy)}
+                    className="pointer-events-auto absolute animate-pulse rounded-sm border-2 border-dashed border-gold bg-gold/40 hover:bg-gold/70"
+                    style={{
+                      left: `${(sx / COLS) * 100}%`,
+                      top: `${(sy / ROWS) * 100}%`,
+                      width: `${100 / COLS}%`,
+                      height: `${100 / ROWS}%`,
+                    }}
+                  />
+                ))}
             </div>
-          )}
+
+            {notice && (
+              <div
+                role="status"
+                className="absolute bottom-3 left-1/2 w-[min(22rem,80%)] -translate-x-1/2 rounded-sm border-4 border-gold bg-parchment p-2 text-center shadow-[3px_3px_0_0_var(--color-bark)]"
+              >
+                <p>{notice}</p>
+                <button type="button" onClick={() => setNotice('')} className="mt-1 underline">
+                  Got it
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Quest pairing: always here, so people know where to go */}
+          <section
+            aria-label="Quest pairing"
+            className="mt-2 space-y-2 rounded-sm border-4 border-gold bg-parchment p-3"
+          >
+            <p className="font-display text-lg font-bold text-bark">Quest Table</p>
+            {!iAmSeated && (
+              <>
+                <p className="text-base">
+                  Want to team up? Sit on a glowing stool at the table to look for a partner.
+                </p>
+                <Button className="px-3 py-1 text-base" onClick={sitAtQuestTable}>
+                  Take me to the table
+                </Button>
+              </>
+            )}
+            {iAmSeated && (
+              <>
+                {seatedOthers.length === 0 && (
+                  <p className="text-base">You&apos;re seated. Waiting for another adventurer to sit down…</p>
+                )}
+                {seatedOthers.map((o) => {
+                  const asked = pair.outgoing === o.key;
+                  const wantsMe = Boolean(pair.incoming[o.key]);
+                  return (
+                    <div key={o.key} className="flex items-center gap-2">
+                      <Avatar id={o.avatar} className="h-8 w-8 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate font-bold">{o.username}</span>
+                      {asked ? (
+                        <>
+                          <span className="text-base">Waiting for them…</span>
+                          <Button variant="secondary" className="px-2 py-1 text-base" onClick={cancelPair}>
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          className="px-3 py-1 text-base"
+                          disabled={Boolean(pair.outgoing)}
+                          onClick={() => requestPair(o)}
+                        >
+                          {wantsMe ? 'Accept' : 'Pair up'}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+                {seatedOthers.some((o) => pair.incoming[o.key] && pair.outgoing !== o.key) && (
+                  <p className="text-base">Someone wants to pair with you. Press Accept to start.</p>
+                )}
+                <p className="text-base">Walk away to stop looking for a partner.</p>
+              </>
+            )}
+          </section>
 
           {/* Chat sits under the map on small windows and floats over the top-left corner on big ones */}
           <section
